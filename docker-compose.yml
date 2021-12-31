@@ -1,0 +1,28 @@
+version: "3"
+services:
+  database:
+    image: mongo
+    restart: always
+    ports:
+      - 27017:27017
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "root"
+      MONGO_INITDB_ROOT_PASSWORD_FILE: /run/secrets/db-root-password
+      MONGO_INITDB_DATABASE: "wikiplag"
+      MONGO_PASSWORD_FILE: /run/secrets/db-password
+      MONGO_USER: "wikiplag"
+    secrets:
+      - db-root-password
+      - db-password
+    volumes:
+      - db_data:/data/db
+      - ./wiki-db/init:/docker-entrypoint-initdb.d/
+
+secrets:
+  db-root-password:
+    file: ./wiki-db/db-root-password.txt
+  db-password:
+    file: ./wiki-db/db-password.txt
+
+volumes:
+  db_data: null
