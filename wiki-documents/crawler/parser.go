@@ -80,6 +80,7 @@ func parseDocument(page *mw.Page) (doc entity.Document, err error) {
 	doc.Title = page.Title
 	doc.Source = dataSource
 	doc.Paragraphs = ps
+	doc.Categories = make([]entity.Id, 0)
 
 	return
 }
