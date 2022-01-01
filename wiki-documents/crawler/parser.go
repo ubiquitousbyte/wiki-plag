@@ -59,6 +59,8 @@ func parseDocument(page *mw.Page) (doc entity.Document, err error) {
 				p := entity.Paragraph{Title: "Abstract", Text: t.data, Position: 1}
 				ps = append(ps, p)
 			} else {
+				// TODO: Use (((?![\d])\w)+) to further parse out irrelevant
+				// tokens.
 				if c := strings.ReplaceAll(t.data, " ", ""); len(c) != 0 {
 					sb.WriteString(t.data)
 				}
