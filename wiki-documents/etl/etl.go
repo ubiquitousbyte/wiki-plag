@@ -5,13 +5,15 @@
 package etl
 
 import (
+	"errors"
+
 	"github.com/ubiquitousbyte/wiki-documents/crawler"
 	"github.com/ubiquitousbyte/wiki-documents/database"
 	"github.com/ubiquitousbyte/wiki-documents/entity"
 )
 
 type Config struct {
-	crawlCfg crawler.Config
+	CrawlCfg crawler.Config
 	Ds       database.DocumentStore
 	Cs       database.CategoryStore
 }
@@ -24,7 +26,7 @@ type Pipeline struct {
 func NewPipeline(cfg Config) *Pipeline {
 	return &Pipeline{
 		Config: cfg,
-		graph:  crawler.NewCrawler(cfg.crawlCfg),
+		graph:  crawler.NewCrawler(cfg.CrawlCfg),
 	}
 }
 
@@ -33,13 +35,13 @@ func NewPipeline(cfg Config) *Pipeline {
 // This function returns the document's entity id or an error, if one occured
 func (p *Pipeline) readOrCreateDoc(doc *entity.Document) (id entity.Id, err error) {
 	databaseDoc, err := p.Ds.ReadDocBySrc(doc.Title, doc.Source)
-	switch err {
-	case database.ErrModelNotFound:
+	switch {
+	case errors.Is(err, database.ErrModelNotFound):
 		return p.Ds.CreateDoc(doc)
-	case nil:
+	case err == nil:
 		return databaseDoc.Id, nil
 	default:
-		return id, err
+		return id, nil
 	}
 }
 
@@ -48,13 +50,13 @@ func (p *Pipeline) readOrCreateDoc(doc *entity.Document) (id entity.Id, err erro
 // This function returns the category's entity id or an error, if one occured
 func (p *Pipeline) readOrCreateCategory(c *entity.Category) (id entity.Id, err error) {
 	dbCategory, err := p.Cs.ReadCategoryBySrc(c.Name, c.Source)
-	switch err {
-	case database.ErrModelNotFound:
+	switch {
+	case errors.Is(err, database.ErrModelNotFound):
 		return p.Cs.CreateCategory(c)
-	case nil:
+	case err == nil:
 		return dbCategory.Id, nil
 	default:
-		return id, err
+		return id, nil
 	}
 }
 
@@ -65,20 +67,20 @@ func (p *Pipeline) load(root *entity.Category, documents <-chan entity.Document)
 
 	id, err := p.readOrCreateCategory(root)
 	if err != nil {
-		p.crawlCfg.Logger.Println(err)
+		p.CrawlCfg.Logger.Println(err)
 		createRel = false
 	}
 
 	for doc := range documents {
 		docId, err := p.readOrCreateDoc(&doc)
 		if err != nil {
-			p.crawlCfg.Logger.Println(err)
+			p.CrawlCfg.Logger.Println(err)
 			continue
 		}
 
 		if createRel {
 			if err = p.Ds.AddCategory(docId, id); err != nil {
-				p.crawlCfg.Logger.Println(err)
+				p.CrawlCfg.Logger.Println(err)
 				continue
 			}
 		}
@@ -102,15 +104,20 @@ func (p *Pipeline) BFS(root *entity.Category) error {
 	queue := []entity.Category{*root}
 	for len(queue) > 0 {
 		current := queue[0]
-		queue := queue[1:]
+		queue = queue[1:]
+		p.CrawlCfg.Logger.Printf("Starting traversal process for %s", current.Name)
 
 		children, err := p.walk(&current)
 		if err != nil {
 			return err
 		}
+
 		for child := range children {
+			p.CrawlCfg.Logger.Printf("Found child node %s", child.Name)
 			queue = append(queue, child)
 		}
+
+		p.CrawlCfg.Logger.Printf("Successfully loaded %s\n", current.Name)
 	}
 	return nil
 }
