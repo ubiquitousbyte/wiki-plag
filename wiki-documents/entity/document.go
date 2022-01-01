@@ -7,7 +7,7 @@ type Paragraph struct {
 }
 
 type Document struct {
-	Id         Id          `bson:"_id" json:"id"`
+	Id         Id          `bson:"_id,omitempty" json:"id"`
 	Title      string      `bson:"title" json:"title"`
 	Source     string      `bson:"source" json:"source"`
 	Categories []Id        `bson:"categories" json:"categories"`
