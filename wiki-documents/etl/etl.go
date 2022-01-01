@@ -5,18 +5,15 @@
 package etl
 
 import (
-	"errors"
-
 	"github.com/ubiquitousbyte/wiki-documents/crawler"
-	db "github.com/ubiquitousbyte/wiki-documents/database"
-	obj "github.com/ubiquitousbyte/wiki-documents/models"
+	"github.com/ubiquitousbyte/wiki-documents/database"
+	"github.com/ubiquitousbyte/wiki-documents/entity"
 )
 
 type Config struct {
-	crawler.Config
-	Ds    db.DocumentStore
-	Cs    db.CategoryStore
-	Depth uint8
+	crawlCfg crawler.Config
+	Ds       database.DocumentStore
+	Cs       database.CategoryStore
 }
 
 type Pipeline struct {
@@ -24,65 +21,96 @@ type Pipeline struct {
 	graph *crawler.Crawler
 }
 
-func (p *Pipeline) readOrCreateDoc(doc *obj.Document) (id string, err error) {
-	// Query the document from the database
-	databaseDoc, err := p.Ds.ReadDocBySrc(doc.Title, doc.Source)
-	if err != nil {
-		if !errors.Is(err, db.ErrModelNotFound) {
-			// An unknown error has occured, return it
-			return id, err
-		} else {
-			// The document does not exist.
-			// Create it
-			id, err = p.Ds.CreateDoc(doc)
-			if err != nil {
-				return id, err
-			}
-		}
-	} else {
-		// The document was found
-		id = databaseDoc.Id.Hex()
+func NewPipeline(cfg Config) *Pipeline {
+	return &Pipeline{
+		Config: cfg,
+		graph:  crawler.NewCrawler(cfg.crawlCfg),
 	}
-	return id, err
 }
 
-// Load represents the last stage of the ETL pipeline.
-// This function iterates over a stream of documents and loads each document
-// into the document store defined by the user.
-// If the document already exists, it is not duplicated.
-func (p *Pipeline) load(root *obj.Category, documents <-chan obj.Document) {
+// readOrCreateDoc queries the document from the document storage.
+// If it does not find it, the document is created
+// This function returns the document's entity id or an error, if one occured
+func (p *Pipeline) readOrCreateDoc(doc *entity.Document) (id entity.Id, err error) {
+	databaseDoc, err := p.Ds.ReadDocBySrc(doc.Title, doc.Source)
+	switch err {
+	case database.ErrModelNotFound:
+		return p.Ds.CreateDoc(doc)
+	case nil:
+		return databaseDoc.Id, nil
+	default:
+		return id, err
+	}
+}
+
+// readOrCreateCategory queries the category from the category storage.
+// If it does not find it, the category is created
+// This function returns the category's entity id or an error, if one occured
+func (p *Pipeline) readOrCreateCategory(c *entity.Category) (id entity.Id, err error) {
+	dbCategory, err := p.Cs.ReadCategoryBySrc(c.Name, c.Source)
+	switch err {
+	case database.ErrModelNotFound:
+		return p.Cs.CreateCategory(c)
+	case nil:
+		return dbCategory.Id, nil
+	default:
+		return id, err
+	}
+}
+
+// load represents the last stage of the ETL pipeline.
+// The root category and all of its children are persisted to the database
+func (p *Pipeline) load(root *entity.Category, documents <-chan entity.Document) {
+	createRel := true
+
+	id, err := p.readOrCreateCategory(root)
+	if err != nil {
+		p.crawlCfg.Logger.Println(err)
+		createRel = false
+	}
+
 	for doc := range documents {
 		docId, err := p.readOrCreateDoc(&doc)
 		if err != nil {
-			p.Logger.Println(err)
+			p.crawlCfg.Logger.Println(err)
 			continue
 		}
 
-		if err = p.Ds.AddCategory(docId, root.Id.Hex()); err != nil {
-			p.Logger.Println(err)
-			continue
+		if createRel {
+			if err = p.Ds.AddCategory(docId, id); err != nil {
+				p.crawlCfg.Logger.Println(err)
+				continue
+			}
 		}
 	}
 }
 
-func (p *Pipeline) Run(root *obj.Category) error {
-	if p.Depth <= 0 {
-		return nil
-	}
-
-	categories, documents, err := p.graph.Walk(root)
+// walk traverses a layer in the graph, implicitly persisting each node
+// to the respective storage.
+func (p *Pipeline) walk(category *entity.Category) (<-chan entity.Category, error) {
+	categories, documents, err := p.graph.Walk(category)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	go p.load(category, documents)
+	return categories, nil
+}
 
-	p.Depth -= 1
-	go p.load(root, documents)
+// BFS traverses the graph using the Breadth-First-Search algorithm and
+// persists all nodes to the respective storage
+func (p *Pipeline) BFS(root *entity.Category) error {
+	queue := []entity.Category{*root}
+	for len(queue) > 0 {
+		current := queue[0]
+		queue := queue[1:]
 
-	for category := range categories {
-		if err = p.Run(&category); err != nil {
-			break
+		children, err := p.walk(&current)
+		if err != nil {
+			return err
+		}
+		for child := range children {
+			queue = append(queue, child)
 		}
 	}
-
-	return err
+	return nil
 }
