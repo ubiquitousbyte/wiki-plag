@@ -4,18 +4,18 @@ import (
 	"errors"
 	"strings"
 
+	"github.com/ubiquitousbyte/wiki-documents/entity"
 	mw "github.com/ubiquitousbyte/wiki-documents/mediawiki"
-	obj "github.com/ubiquitousbyte/wiki-documents/models"
 )
 
 // A convenience wrapper over a slice of paragraphs
-type paragraphs []obj.Paragraph
+type paragraphs []entity.Paragraph
 
 const dataSource = "mediawiki"
 
 // Returns a reference to the last paragraph, if one exists
 // Otherwise, the function returns nil
-func (p paragraphs) Last() *obj.Paragraph {
+func (p paragraphs) Last() *entity.Paragraph {
 	if len(p) > 0 {
 		return &p[len(p)-1]
 	}
@@ -38,8 +38,8 @@ func parseTitle(title string) string {
 }
 
 // parseDocument parses a Page into a Document
-func parseDocument(page *mw.Page) (doc obj.Document, err error) {
-	ps := paragraphs(make([]obj.Paragraph, 0))
+func parseDocument(page *mw.Page) (doc entity.Document, err error) {
+	ps := paragraphs(make([]entity.Paragraph, 0))
 
 	flushFunc := func(builder *strings.Builder) {
 		if builder.Len() > 0 {
@@ -56,7 +56,7 @@ func parseDocument(page *mw.Page) (doc obj.Document, err error) {
 		switch t.typ {
 		case tokenTypeText:
 			if ps.IsEmpty() {
-				p := obj.Paragraph{Title: "Abstract", Text: t.data, Position: 1}
+				p := entity.Paragraph{Title: "Abstract", Text: t.data, Position: 1}
 				ps = append(ps, p)
 			} else {
 				if c := strings.ReplaceAll(t.data, " ", ""); len(c) != 0 {
@@ -65,7 +65,7 @@ func parseDocument(page *mw.Page) (doc obj.Document, err error) {
 			}
 		case tokenTypeTitle:
 			flushFunc(&sb)
-			p := obj.Paragraph{
+			p := entity.Paragraph{
 				Title:    parseTitle(t.data),
 				Position: parsePosition(t.data),
 			}
@@ -85,10 +85,10 @@ func parseDocument(page *mw.Page) (doc obj.Document, err error) {
 }
 
 // parseCategory parses a Page into a Category
-func parseCategory(page *mw.Page) (c obj.Category, err error) {
+func parseCategory(page *mw.Page) (c entity.Category, err error) {
 	substr := strings.SplitN(page.Title, ":", 2)
 
-	c.Name = substr[1]
+	c.Name = substr[len(substr)-1]
 	c.Description = page.Text
 	c.Source = dataSource
 

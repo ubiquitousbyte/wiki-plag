@@ -5,22 +5,22 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ubiquitousbyte/wiki-documents/entity"
 	"github.com/ubiquitousbyte/wiki-documents/mediawiki"
-	"github.com/ubiquitousbyte/wiki-documents/models"
 )
 
 func TestWalkMediaWiki(t *testing.T) {
 	tests := []struct {
 		name             string
 		lang             string
-		category         models.Category
+		category         entity.Category
 		minDocCount      int
 		minCategoryCount int
 	}{
 		{
 			name: "walk Informatik page in german wikipedia",
 			lang: "de",
-			category: models.Category{
+			category: entity.Category{
 				Name: "Informatik",
 			},
 			minDocCount:      90, // See https://de.wikipedia.org/wiki/Kategorie:Informatik
@@ -44,7 +44,7 @@ func TestWalkMediaWiki(t *testing.T) {
 			var wg sync.WaitGroup
 
 			wg.Add(1)
-			c := make([]models.Category, 0)
+			c := make([]entity.Category, 0)
 			go func() {
 				defer wg.Done()
 				for category := range categories {
@@ -53,7 +53,7 @@ func TestWalkMediaWiki(t *testing.T) {
 			}()
 
 			wg.Add(1)
-			d := make([]models.Document, 0)
+			d := make([]entity.Document, 0)
 			go func() {
 				defer wg.Done()
 				for doc := range docs {

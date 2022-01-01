@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/ubiquitousbyte/wiki-documents/entity"
 	mw "github.com/ubiquitousbyte/wiki-documents/mediawiki"
-	"github.com/ubiquitousbyte/wiki-documents/models"
 )
 
 // In-memory MediaWiki client serving as a mock for Crawler testing
@@ -30,8 +30,8 @@ func TestWalk(t *testing.T) {
 	tests := []struct {
 		name       string
 		cfg        Config
-		documents  []models.Document
-		categories []models.Category
+		documents  []entity.Document
+		categories []entity.Category
 		err        error
 	}{
 		{
@@ -69,11 +69,11 @@ func TestWalk(t *testing.T) {
 				},
 				Logger: log.Default(),
 			},
-			documents: []models.Document{
+			documents: []entity.Document{
 				{
 					Title:  "Document 1",
 					Source: "mediawiki",
-					Paragraphs: []models.Paragraph{
+					Paragraphs: []entity.Paragraph{
 						{
 							Title:    "Abstract",
 							Position: 1,
@@ -84,7 +84,7 @@ func TestWalk(t *testing.T) {
 				{
 					Title:  "Document 2",
 					Source: "mediawiki",
-					Paragraphs: []models.Paragraph{
+					Paragraphs: []entity.Paragraph{
 						{
 							Title:    "Abstract",
 							Position: 1,
@@ -93,7 +93,7 @@ func TestWalk(t *testing.T) {
 					},
 				},
 			},
-			categories: []models.Category{
+			categories: []entity.Category{
 				{
 					Source:      "mediawiki",
 					Name:        "Category 1",
@@ -113,22 +113,22 @@ func TestWalk(t *testing.T) {
 				MwC:      &mockMwClient{err: io.EOF},
 				Logger:   log.Default(),
 			},
-			categories: make([]models.Category, 0),
-			documents:  make([]models.Document, 0),
+			categories: make([]entity.Category, 0),
+			documents:  make([]entity.Document, 0),
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			crawler := NewCrawler(test.cfg)
-			categories, documents, err := crawler.Walk(&models.Category{Name: "dummy"})
+			categories, documents, err := crawler.Walk(&entity.Category{Name: "dummy"})
 			if !errors.Is(err, test.err) {
 				t.Errorf("Expected error %s, but got %s instead", test.err, err)
 			}
 			var wg sync.WaitGroup
 
 			wg.Add(1)
-			c := make([]models.Category, 0)
+			c := make([]entity.Category, 0)
 			go func() {
 				defer wg.Done()
 				for category := range categories {
@@ -137,7 +137,7 @@ func TestWalk(t *testing.T) {
 			}()
 
 			wg.Add(1)
-			d := make([]models.Document, 0)
+			d := make([]entity.Document, 0)
 			go func() {
 				defer wg.Done()
 				for doc := range documents {

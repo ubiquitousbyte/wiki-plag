@@ -5,15 +5,15 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/ubiquitousbyte/wiki-documents/entity"
 	"github.com/ubiquitousbyte/wiki-documents/mediawiki"
-	"github.com/ubiquitousbyte/wiki-documents/models"
 )
 
 func TestParseDocument(t *testing.T) {
 	tests := []struct {
 		name string
 		page mediawiki.Page
-		doc  models.Document
+		doc  entity.Document
 		err  error
 	}{
 		{
@@ -23,10 +23,10 @@ func TestParseDocument(t *testing.T) {
 				Title: "Page 1",
 				Text:  "text\n==Par1==\ntext{\\randomgibberish}\n==Par2==text",
 			},
-			doc: models.Document{
+			doc: entity.Document{
 				Title:  "Page 1",
 				Source: "mediawiki",
-				Paragraphs: []models.Paragraph{
+				Paragraphs: []entity.Paragraph{
 					{
 						Title:    "Abstract",
 						Position: 1,
@@ -52,10 +52,10 @@ func TestParseDocument(t *testing.T) {
 				Title: "Page 2",
 				Text:  "text\n==Par1==\ntexttexttexttext{nosuchthing}===Par2===",
 			},
-			doc: models.Document{
+			doc: entity.Document{
 				Title:  "Page 2",
 				Source: "mediawiki",
-				Paragraphs: []models.Paragraph{
+				Paragraphs: []entity.Paragraph{
 					{
 						Title:    "Abstract",
 						Position: 1,
@@ -107,7 +107,7 @@ func TestParseCategory(t *testing.T) {
 	tests := []struct {
 		name     string
 		page     mediawiki.Page
-		category models.Category
+		category entity.Category
 		err      error
 	}{
 		{
@@ -117,7 +117,7 @@ func TestParseCategory(t *testing.T) {
 				Namespace: mediawiki.NamespaceCategory,
 				Text:      "Some text",
 			},
-			category: models.Category{
+			category: entity.Category{
 				Name:        "Category 1",
 				Description: "Some text",
 				Source:      "mediawiki",

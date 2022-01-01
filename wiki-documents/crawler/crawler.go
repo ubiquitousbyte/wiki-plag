@@ -7,8 +7,8 @@ import (
 	"io"
 	"log"
 
+	"github.com/ubiquitousbyte/wiki-documents/entity"
 	mw "github.com/ubiquitousbyte/wiki-documents/mediawiki"
-	obj "github.com/ubiquitousbyte/wiki-documents/models"
 )
 
 // Crawler configuration provided by the caller
@@ -54,9 +54,9 @@ func (cw *Crawler) extract(req *mw.PageRequest) <-chan mw.Page {
 
 // The function transforms every page in the page stream into either a category
 // or document.
-func (cw *Crawler) transform(p <-chan mw.Page) (<-chan obj.Category, <-chan obj.Document) {
-	categories := make(chan obj.Category, 1)
-	documents := make(chan obj.Document, 1)
+func (cw *Crawler) transform(p <-chan mw.Page) (<-chan entity.Category, <-chan entity.Document) {
+	categories := make(chan entity.Category, 1)
+	documents := make(chan entity.Document, 1)
 
 	go func() {
 		defer close(categories)
@@ -91,7 +91,7 @@ func (cw *Crawler) transform(p <-chan mw.Page) (<-chan obj.Category, <-chan obj.
 // Walk visits a node in the tree, extracting all of its children nodes.
 // Children nodes are separated into categories and documents.
 // The function returns two bounded streams of categories and documents, respectively.
-func (cw *Crawler) Walk(node *obj.Category) (<-chan obj.Category, <-chan obj.Document, error) {
+func (cw *Crawler) Walk(node *entity.Category) (<-chan entity.Category, <-chan entity.Document, error) {
 	request, err := mw.NewPageRequest(cw.Language, node.Name)
 	if err != nil {
 		return nil, nil, errCrawl.from(err)
