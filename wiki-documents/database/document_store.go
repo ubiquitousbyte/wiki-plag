@@ -1,26 +1,24 @@
 package database
 
-import (
-	obj "github.com/ubiquitousbyte/wiki-documents/models"
-)
+import "github.com/ubiquitousbyte/wiki-documents/entity"
 
 // DocumentStore is an interface for performing CRUD operations
 // on Document entities
 type DocumentStore interface {
 	// Reads all documents that are a part of this category
-	ReadDocsByCategory(categoryId string) ([]obj.Document, error)
+	ReadDocsByCategory(categoryId entity.Id) ([]entity.Document, error)
 	// Reads the document by its identifier
-	ReadDoc(id string) (obj.Document, error)
+	ReadDoc(id entity.Id) (entity.Document, error)
 	// Reads the document by its title and source
-	ReadDocBySrc(title, source string) (obj.Document, error)
-	// Creates the document
-	CreateDoc(doc *obj.Document) (string, error)
-	// Adds the category with the given id to the documet
+	ReadDocBySrc(title, source string) (entity.Document, error)
+	// Creates the document and returns its id and an error, if one occured
+	CreateDoc(doc *entity.Document) (entity.Id, error)
+	// Adds the category with the given id to the document
 	// with the given identifier
-	AddCategory(docId, categoryId string) error
+	AddCategory(docId, categoryId entity.Id) error
 	// Removes the category with the specified identifier from the
 	// document with the specified identifier
-	RemoveCategory(docId, categoryId string) error
+	RemoveCategory(docId, categoryId entity.Id) error
 	// Deletes the document with the given id
-	DeleteDoc(id string) error
+	DeleteDoc(id entity.Id) error
 }

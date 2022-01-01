@@ -4,44 +4,38 @@ import (
 	"context"
 	"time"
 
-	obj "github.com/ubiquitousbyte/wiki-documents/models"
+	"github.com/ubiquitousbyte/wiki-documents/entity"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-func dbColl(cl *mongo.Client) *mongo.Collection {
-	return cl.Database("wikiplag").Collection("documents")
+type MongoDocumentStore struct {
+	c *mongo.Client
 }
 
-func dbCtx(seconds time.Duration) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*seconds)
-	return ctx, cancel
+var _ DocumentStore = (*MongoDocumentStore)(nil)
+
+func NewMongoDocumentStore(client *mongo.Client) *MongoDocumentStore {
+	return &MongoDocumentStore{c: client}
 }
 
-type mongoDocStore struct {
-	client *mongo.Client
+func (m *MongoDocumentStore) collection() *mongo.Collection {
+	return m.c.Database("wikiplag").Collection("documents")
 }
 
-var _ DocumentStore = (*mongoDocStore)(nil)
-
-func (m *mongoDocStore) ReadDocsByCategory(categoryId string) ([]obj.Document, error) {
-	catObjId, err := primitive.ObjectIDFromHex(categoryId)
-	if err != nil {
-		return nil, ErrInvalidModel.from(err)
-	}
-
-	coll := dbColl(m.client)
-	ctx, cancel := dbCtx(2)
+func (m *MongoDocumentStore) ReadDocsByCategory(id entity.Id) ([]entity.Document, error) {
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
 	defer cancel()
 
-	filter := bson.M{"categories": bson.M{"$in": catObjId}}
+	filter := bson.M{"categories": id}
 	cursor, err := coll.Find(ctx, filter)
 	if err != nil {
 		return nil, ErrModelNotFound.from(err)
 	}
 
-	var documents []obj.Document
+	var documents []entity.Document
 	if err = cursor.All(ctx, &documents); err != nil {
 		return nil, ErrInvalidModel.from(err)
 	}
@@ -49,12 +43,12 @@ func (m *mongoDocStore) ReadDocsByCategory(categoryId string) ([]obj.Document, e
 	return documents, nil
 }
 
-func (m *mongoDocStore) ReadDoc(id string) (doc obj.Document, err error) {
-	coll := dbColl(m.client)
-	ctx, cancel := dbCtx(1)
+func (m *MongoDocumentStore) ReadDoc(id entity.Id) (doc entity.Document, err error) {
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	filter := bson.M{"_id": id}
+	filter := bson.M{"_id": id, "paragraphs": bson.M{"$exists": true}}
 	res := coll.FindOne(ctx, filter)
 	if err = res.Err(); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -72,14 +66,14 @@ func (m *mongoDocStore) ReadDoc(id string) (doc obj.Document, err error) {
 	return
 }
 
-func (m *mongoDocStore) ReadDocBySrc(title, source string) (obj.Document, error) {
-	var doc obj.Document
+func (m *MongoDocumentStore) ReadDocBySrc(title, source string) (entity.Document, error) {
+	var doc entity.Document
 
-	coll := dbColl(m.client)
-	ctx, cancel := dbCtx(1)
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	filter := bson.M{"title": title, source: "source"}
+	filter := bson.M{"title": title, "source": source}
 	res := coll.FindOne(ctx, filter)
 	if err := res.Err(); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -97,9 +91,9 @@ func (m *mongoDocStore) ReadDocBySrc(title, source string) (obj.Document, error)
 	return doc, nil
 }
 
-func (m *mongoDocStore) CreateDoc(doc *obj.Document) (id string, err error) {
-	coll := dbColl(m.client)
-	ctx, cancel := dbCtx(1)
+func (m *MongoDocumentStore) CreateDoc(doc *entity.Document) (id entity.Id, err error) {
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	res, err := coll.InsertOne(ctx, doc)
@@ -107,27 +101,17 @@ func (m *mongoDocStore) CreateDoc(doc *obj.Document) (id string, err error) {
 		return id, ErrCreate.from(err)
 	}
 
-	id = res.InsertedID.(primitive.ObjectID).Hex()
+	id = entity.Id(res.InsertedID.(primitive.ObjectID).Hex())
 	return
 }
 
-func (m *mongoDocStore) AddCategory(docId, categoryId string) error {
-	docObjId, err := primitive.ObjectIDFromHex(docId)
-	if err != nil {
-		return ErrInvalidModel.from(err)
-	}
-
-	catObjId, err := primitive.ObjectIDFromHex(categoryId)
-	if err != nil {
-		return ErrInvalidModel.from(err)
-	}
-
-	coll := dbColl(m.client)
-	ctx, cancel := dbCtx(1)
+func (m *MongoDocumentStore) AddCategory(doc, cat entity.Id) error {
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	filter := bson.M{"_id": docObjId}
-	update := bson.M{"$addToSet": bson.M{"categories": catObjId}}
+	filter := bson.M{"_id": doc}
+	update := bson.M{"$addToSet": bson.M{"categories": cat}}
 	res := coll.FindOneAndUpdate(ctx, filter, update)
 	if err := res.Err(); err != nil {
 		if err == mongo.ErrNoDocuments {
@@ -141,25 +125,15 @@ func (m *mongoDocStore) AddCategory(docId, categoryId string) error {
 	return nil
 }
 
-func (m *mongoDocStore) RemoveCategory(docId, categoryId string) error {
-	docObjId, err := primitive.ObjectIDFromHex(docId)
-	if err != nil {
-		return ErrInvalidModel.from(err)
-	}
-
-	catObjId, err := primitive.ObjectIDFromHex(categoryId)
-	if err != nil {
-		return ErrInvalidModel.from(err)
-	}
-
-	coll := dbColl(m.client)
-	ctx, cancel := dbCtx(1)
+func (m *MongoDocumentStore) RemoveCategory(doc, cat entity.Id) error {
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	filter := bson.M{"_id": docObjId}
+	filter := bson.M{"_id": doc}
 	update := bson.M{
 		"$pull": bson.M{
-			"categories": bson.M{"$in": []primitive.ObjectID{catObjId}},
+			"categories": bson.M{"$in": []entity.Id{cat}},
 		},
 	}
 	res := coll.FindOneAndUpdate(ctx, filter, update)
@@ -175,12 +149,12 @@ func (m *mongoDocStore) RemoveCategory(docId, categoryId string) error {
 	return nil
 }
 
-func (m *mongoDocStore) DeleteDoc(id string) error {
-	coll := dbColl(m.client)
-	ctx, cancel := dbCtx(1)
+func (m *MongoDocumentStore) DeleteDoc(id entity.Id) error {
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	filter := bson.M{"_id": id}
+	filter := bson.M{"_id": id, "paragraphs": bson.M{"$exists": true}}
 	res := coll.FindOneAndDelete(ctx, filter)
 	if err := res.Err(); err != nil {
 		if err == mongo.ErrNoDocuments {

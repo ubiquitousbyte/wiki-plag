@@ -6,6 +6,7 @@ type errCode int
 
 const (
 	errCodeInvalidModel errCode = iota + 1
+	errCodeConnect
 	errCodeModelNotFound
 	errCodeCreate
 	errCodeUpdate
@@ -14,6 +15,8 @@ const (
 
 func (e errCode) String() string {
 	switch e {
+	case errCodeConnect:
+		return "Connection error"
 	case errCodeInvalidModel:
 		return "Invalid model"
 	case errCodeModelNotFound:
@@ -30,6 +33,7 @@ func (e errCode) String() string {
 }
 
 var (
+	ErrConnect       = &dbErr{code: errCodeConnect}
 	ErrInvalidModel  = &dbErr{code: errCodeInvalidModel}
 	ErrModelNotFound = &dbErr{code: errCodeModelNotFound}
 	ErrCreate        = &dbErr{code: errCodeCreate}
