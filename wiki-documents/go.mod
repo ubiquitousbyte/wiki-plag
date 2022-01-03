@@ -3,6 +3,7 @@ module github.com/ubiquitousbyte/wiki-documents
 go 1.17
 
 require (
+	github.com/go-chi/chi/v5 v5.0.7
 	go.mongodb.org/mongo-driver v1.8.1
 	golang.org/x/text v0.3.7
 )
