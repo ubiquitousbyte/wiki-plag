@@ -43,6 +43,25 @@ func (m *MongoCategoryStore) ReadCategories() ([]entity.Category, error) {
 	return categories, nil
 }
 
+func (m *MongoCategoryStore) ReadDocsByCategory(id entity.Id) ([]entity.Document, error) {
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
+	defer cancel()
+
+	filter := bson.M{"categories": id}
+	cursor, err := coll.Find(ctx, filter)
+	if err != nil {
+		return nil, ErrModelNotFound.from(err)
+	}
+
+	var documents []entity.Document
+	if err = cursor.All(ctx, &documents); err != nil {
+		return nil, ErrInvalidModel.from(err)
+	}
+
+	return documents, nil
+}
+
 func (m *MongoCategoryStore) ReadCategory(id entity.Id) (c entity.Category, err error) {
 	coll := m.collection()
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -51,7 +70,11 @@ func (m *MongoCategoryStore) ReadCategory(id entity.Id) (c entity.Category, err 
 	filter := bson.M{"_id": id, "name": bson.M{"$exists": true}}
 	res := coll.FindOne(ctx, filter)
 	if err := res.Err(); err != nil {
-		return c, ErrModelNotFound.from(err)
+		if err == mongo.ErrNoDocuments {
+			return c, ErrModelNotFound.from(err)
+		} else {
+			return c, dbErr{}.from(err)
+		}
 	}
 
 	if err = res.Decode(&c); err != nil {

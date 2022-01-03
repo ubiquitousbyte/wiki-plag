@@ -11,68 +11,6 @@ import (
 
 var mongoTestDb *mongoTestClient
 
-func TestReadDocsByCategory(t *testing.T) {
-	category := entity.NewEntityId()
-	tests := []struct {
-		name string
-		seed []entity.Document
-		err  error
-	}{
-		{
-			name: "enmpty slice when documents not found",
-			err:  nil,
-			seed: nil,
-		},
-		{
-			name: "returns the set of documents that are a part of the category",
-			seed: []entity.Document{
-				{
-					Id:         entity.NewEntityId(),
-					Title:      "Document 1",
-					Categories: []entity.Id{category, entity.NewEntityId()},
-					Paragraphs: []entity.Paragraph{
-						{
-							Title:    "Paragraph 1",
-							Position: 1,
-							Text:     "Some text",
-						},
-					},
-				},
-				{
-					Id:         entity.NewEntityId(),
-					Title:      "Document 2",
-					Categories: []entity.Id{category, entity.NewEntityId()},
-					Paragraphs: []entity.Paragraph{
-						{
-							Title:    "Paragraph 2",
-							Position: 1,
-							Text:     "Some text",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	ds := mongoTestDb.documentStore()
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			mongoTestDb.reset()
-			if len(test.seed) > 0 {
-				mongoTestDb.seedDocuments(test.seed)
-			}
-			documents, err := ds.ReadDocsByCategory(category)
-			if !errors.Is(err, test.err) {
-				t.Errorf("Expected error %s but got %s", test.err, err)
-			}
-
-			if !reflect.DeepEqual(documents, test.seed) {
-				t.Errorf("Document mismatch")
-			}
-		})
-	}
-}
-
 func TestCreateDoc(t *testing.T) {
 	tests := []struct {
 		name     string
