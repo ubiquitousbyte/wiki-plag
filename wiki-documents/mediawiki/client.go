@@ -47,21 +47,21 @@ type PageRequest struct {
 // MediaWiki subsystem.
 func NewPageRequest(lang, category string) (*PageRequest, error) {
 	if len(category) == 0 {
-		return nil, errInvalidRequest.from(errors.New("Empty category name"))
+		return nil, ErrInvalidRequest.from(errors.New("Empty category name"))
 	}
 	if len(lang) != 2 {
 		err := fmt.Errorf("Invalid ISO 639-1 language identifier %s", lang)
-		return nil, errInvalidRequest.from(err)
+		return nil, ErrInvalidRequest.from(err)
 	}
 
 	l, err := language.ParseBase(lang)
 	if err != nil {
-		return nil, errInvalidRequest.from(err)
+		return nil, ErrInvalidRequest.from(err)
 	}
 
 	ep, err := url.Parse(fmt.Sprintf(epFormat, l))
 	if err != nil {
-		return nil, errInvalidRequest.from(err)
+		return nil, ErrInvalidRequest.from(err)
 	}
 
 	return &PageRequest{url: ep, category: category}, nil
