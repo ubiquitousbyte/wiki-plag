@@ -10,6 +10,8 @@ import (
 	"github.com/ubiquitousbyte/wiki-documents/entity"
 )
 
+// Validates the category and returns nil if it is valid
+// or an error otherwise
 func validateCategory(c *entity.Category) error {
 	code := http.StatusBadRequest
 	if len(c.Source) == 0 {
@@ -21,11 +23,19 @@ func validateCategory(c *entity.Category) error {
 	return nil
 }
 
+// A category backend
 type Backend interface {
+	// Retrieves a batch of categories starting at index.
+	// The number of categories retrieved is defined by offset.
 	GetAll(index, offset uint) ([]entity.Category, error)
+	// Retrieves the category with the id
 	Get(id entity.Id) (*entity.Category, error)
+	// Retrieves all documents that are a part of the category with the given id
 	GetDocuments(id entity.Id) ([]entity.Document, error)
+	// Creates a category.
+	// If the category is not valid, an error is returned
 	Create(category *entity.Category) (entity.Id, error)
+	// Deletes the category with the specified id
 	Delete(id entity.Id) error
 }
 
@@ -33,6 +43,7 @@ type backend struct {
 	store database.CategoryStore
 }
 
+// Creates a new backend from the category store
 func NewBackend(store database.CategoryStore) *backend {
 	return &backend{store: store}
 }

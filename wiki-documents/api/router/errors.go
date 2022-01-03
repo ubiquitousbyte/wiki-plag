@@ -26,6 +26,7 @@ func NewAPIError(cause error, detail string, status int) error {
 	}
 }
 
+// Writes the error as JSON into the response writer
 func WriteAPIError(w http.ResponseWriter, err error) {
 	apiErr, ok := err.(*APIError)
 	if !ok {

@@ -7,6 +7,9 @@ type Router struct {
 	routes  []router.Route
 }
 
+var _ router.Router = (*Router)(nil)
+
+// Creates a new category router from the given backend
 func NewRouter(backend Backend) *Router {
 	r := &Router{backend: backend}
 	r.init()
@@ -17,6 +20,7 @@ func (r *Router) Routes() []router.Route {
 	return r.routes
 }
 
+// Initializes all category routes
 func (r *Router) init() {
 	r.routes = []router.Route{
 		router.NewGetRoute("/categories", r.getAll),
