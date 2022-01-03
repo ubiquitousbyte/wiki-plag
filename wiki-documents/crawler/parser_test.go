@@ -76,7 +76,7 @@ func TestParseDocument(t *testing.T) {
 				Title: "Page 3",
 				Text:  "==Title never ends",
 			},
-			err: errParse,
+			err: ErrParse,
 		},
 		{
 			name: "parse page 4",
@@ -85,7 +85,7 @@ func TestParseDocument(t *testing.T) {
 				Title: "Page 4",
 				Text:  "{LateX Block never ends",
 			},
-			err: errParse,
+			err: ErrParse,
 		},
 	}
 

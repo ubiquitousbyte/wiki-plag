@@ -21,8 +21,8 @@ func (e errCode) String() string {
 }
 
 var (
-	errParse = &crawlErr{code: codeParse}
-	errCrawl = &crawlErr{code: codeCrawl}
+	ErrParse = &crawlErr{code: codeParse}
+	ErrCrawl = &crawlErr{code: codeCrawl}
 )
 
 type crawlErr struct {
