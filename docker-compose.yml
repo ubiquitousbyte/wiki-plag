@@ -19,7 +19,9 @@ services:
       - ./wiki-db/init:/docker-entrypoint-initdb.d/
 
   documents:
-    build: ./wiki-documents
+    build:
+      context: ./wiki-documents
+      dockerfile: Dockerfile.api
     restart: on-failure
     ports:
       - 8080:80
