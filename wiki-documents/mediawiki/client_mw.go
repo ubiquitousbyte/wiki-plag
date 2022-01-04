@@ -65,7 +65,7 @@ func (c *client) ReadPages(request *PageRequest) ([]Page, error) {
 
 	resp, err := c.c.Get(request.url.String())
 	if err != nil {
-		return nil, errProto.from(err)
+		return nil, ErrProto.from(err)
 	}
 	defer resp.Body.Close()
 
@@ -80,12 +80,12 @@ func (c *client) ReadPages(request *PageRequest) ([]Page, error) {
 		} `json:"query"`
 	}
 	if err = decoder.Decode(&payload); err != nil {
-		return nil, errDecode.from(err)
+		return nil, ErrDecode.from(err)
 	}
 
 	if len(payload.Query.Pages) == 0 {
 		err = fmt.Errorf("%s is empty", request.category)
-		return nil, errNoPages.from(err)
+		return nil, ErrNoPages.from(err)
 	}
 
 	if len(payload.Pagination.Offset) == 0 {
@@ -101,7 +101,7 @@ func (c *client) ReadCategory(request *PageRequest) (*Page, error) {
 	request.url.RawQuery = newReadCategoryParams(request).encode()
 	resp, err := c.c.Get(request.url.String())
 	if err != nil {
-		return nil, errProto.from(err)
+		return nil, ErrProto.from(err)
 	}
 	defer resp.Body.Close()
 
@@ -115,7 +115,7 @@ func (c *client) ReadCategory(request *PageRequest) (*Page, error) {
 		}
 	}
 	if err = decoder.Decode(&payload); err != nil {
-		return nil, errDecode.from(err)
+		return nil, ErrDecode.from(err)
 	}
 
 	for _, page := range payload.Query.Pages {
@@ -125,5 +125,5 @@ func (c *client) ReadCategory(request *PageRequest) (*Page, error) {
 	}
 
 	err = fmt.Errorf("Category %s not found", request.category)
-	return nil, errNoPages.from(err)
+	return nil, ErrNoPages.from(err)
 }

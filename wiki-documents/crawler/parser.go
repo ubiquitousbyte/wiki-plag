@@ -71,7 +71,7 @@ func parseDocument(page *mw.Page) (doc entity.Document, err error) {
 			}
 			ps = append(ps, p)
 		case tokenTypeErr:
-			return doc, errParse.from(errors.New(t.data))
+			return doc, ErrParse.from(errors.New(t.data))
 		}
 	}
 

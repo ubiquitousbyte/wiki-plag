@@ -24,25 +24,6 @@ func (m *MongoDocumentStore) collection() *mongo.Collection {
 	return m.c.Database("wikiplag").Collection("documents")
 }
 
-func (m *MongoDocumentStore) ReadDocsByCategory(id entity.Id) ([]entity.Document, error) {
-	coll := m.collection()
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Hour)
-	defer cancel()
-
-	filter := bson.M{"categories": id}
-	cursor, err := coll.Find(ctx, filter)
-	if err != nil {
-		return nil, ErrModelNotFound.from(err)
-	}
-
-	var documents []entity.Document
-	if err = cursor.All(ctx, &documents); err != nil {
-		return nil, ErrInvalidModel.from(err)
-	}
-
-	return documents, nil
-}
-
 func (m *MongoDocumentStore) ReadDoc(id entity.Id) (doc entity.Document, err error) {
 	coll := m.collection()
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
@@ -50,6 +31,7 @@ func (m *MongoDocumentStore) ReadDoc(id entity.Id) (doc entity.Document, err err
 
 	filter := bson.M{"_id": id, "paragraphs": bson.M{"$exists": true}}
 	res := coll.FindOne(ctx, filter)
+
 	if err = res.Err(); err != nil {
 		if err == mongo.ErrNoDocuments {
 			err = ErrModelNotFound.from(err)
@@ -146,6 +128,24 @@ func (m *MongoDocumentStore) RemoveCategory(doc, cat entity.Id) error {
 		return err
 	}
 
+	return nil
+}
+
+func (m *MongoDocumentStore) ReplaceDoc(doc *entity.Document) error {
+	coll := m.collection()
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	filter := bson.M{"_id": doc.Id, "paragraphs": bson.M{"$exists": true}}
+	res := coll.FindOneAndReplace(ctx, filter, doc)
+	if err := res.Err(); err != nil {
+		if err == mongo.ErrNoDocuments {
+			err = ErrUpdate.from(ErrModelNotFound.from(err))
+		} else {
+			err = ErrUpdate.from(err)
+		}
+		return err
+	}
 	return nil
 }
 

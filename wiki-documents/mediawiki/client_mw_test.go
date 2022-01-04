@@ -16,12 +16,12 @@ func TestNewPageRequest(t *testing.T) {
 			name:     "invalid language identifier",
 			lang:     "bb",
 			category: "Informatik",
-			err:      errInvalidRequest,
+			err:      ErrInvalidRequest,
 		},
 		{
 			name: "empty category",
 			lang: "de",
-			err:  errInvalidRequest,
+			err:  ErrInvalidRequest,
 		},
 		{
 			name:     "valid inputs",
