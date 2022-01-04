@@ -40,6 +40,7 @@ class DMM(nn.Module):
         embedding_size: int
             The size of the embedding space.
         """
+
         super(DMM, self).__init__()
         self._D = nn.Parameter(
             torch.randn(document_count, embedding_size), requires_grad=True
@@ -116,7 +117,6 @@ class Loss(nn.Module):
     -------
     forward(scores: torch.FloatTensor)
         Computes the negative sampling loss of the scores.
-
     """
 
     def __init__(self):
