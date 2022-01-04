@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ubiquitousbyte/wiki-documents/api"
@@ -14,14 +15,14 @@ import (
 )
 
 func mongoClient(uri string) *mongo.Client {
-	/*	password, err := os.ReadFile("/run/secrets/db-password")
-		if err != nil {
-			panic(err)
-		}*/
+	password, err := os.ReadFile("/run/secrets/db-password")
+	if err != nil {
+		panic(err)
+	}
 	creds := options.Credential{
-		//	AuthSource: "documents",
-		Username: "root",
-		Password: "root",
+		AuthSource: "documents",
+		Username:   "wikiplag",
+		Password:   string(password),
 	}
 	options := options.Client().ApplyURI(uri).SetAuth(creds)
 	client, err := mongo.Connect(context.Background(), options)
