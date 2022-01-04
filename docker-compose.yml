@@ -2,7 +2,7 @@ version: "3"
 services:
   database:
     image: mongo
-    restart: always
+    restart: on-failure
     ports:
       - 27017:27017
     environment:
@@ -17,6 +17,18 @@ services:
     volumes:
       - db_data:/data/db
       - ./wiki-db/init:/docker-entrypoint-initdb.d/
+
+  documents:
+    build: ./wiki-documents
+    restart: on-failure
+    ports:
+      - 8080:80
+    secrets:
+      - db-password
+    environment:
+      DB: "wikiplag"
+    depends_on:
+      - database
 
 secrets:
   db-root-password:
