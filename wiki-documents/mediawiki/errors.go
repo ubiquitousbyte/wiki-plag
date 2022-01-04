@@ -30,11 +30,11 @@ func (e errCode) String() string {
 }
 
 var (
-	errInvalidRequest  = &mwErr{code: codeInvalidRequest}
-	errInvalidEndpoint = &mwErr{code: codeInvalidEndpoint}
-	errProto           = &mwErr{code: codeProto}
-	errDecode          = &mwErr{code: codeDecode}
-	errNoPages         = &mwErr{code: codeNoPages}
+	ErrInvalidRequest  = &mwErr{code: codeInvalidRequest}
+	ErrInvalidEndpoint = &mwErr{code: codeInvalidEndpoint}
+	ErrProto           = &mwErr{code: codeProto}
+	ErrDecode          = &mwErr{code: codeDecode}
+	ErrNoPages         = &mwErr{code: codeNoPages}
 )
 
 type mwErr struct {

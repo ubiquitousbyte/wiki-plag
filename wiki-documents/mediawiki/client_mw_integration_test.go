@@ -56,7 +56,7 @@ func TestReadCategory(t *testing.T) {
 			name:     "category does not exist",
 			lang:     "de",
 			category: "Asdasdasd",
-			err:      errNoPages,
+			err:      ErrNoPages,
 		},
 		{
 			name:     "category found",

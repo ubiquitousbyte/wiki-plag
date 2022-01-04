@@ -16,6 +16,14 @@ func (id Id) MarshalBSONValue() (bsontype.Type, []byte, error) {
 	return bson.MarshalValue(p)
 }
 
+func (id Id) IsValidId() bool {
+	return primitive.IsValidObjectID(string(id))
+}
+
 func NewEntityId() Id {
 	return Id(primitive.NewObjectID().Hex())
+}
+
+func (id Id) String() string {
+	return string(id)
 }

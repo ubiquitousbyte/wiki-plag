@@ -40,7 +40,7 @@ func (cw *Crawler) extract(req *mw.PageRequest) <-chan mw.Page {
 			if err == io.EOF {
 				ok = false
 			} else if err != nil {
-				cw.Logger.Println(errCrawl.from(err))
+				cw.Logger.Println(ErrCrawl.from(err))
 				break
 			}
 
@@ -67,20 +67,20 @@ func (cw *Crawler) transform(p <-chan mw.Page) (<-chan entity.Category, <-chan e
 			case mw.NamespaceCategory:
 				category, err := parseCategory(&page)
 				if err != nil {
-					cw.Logger.Println(errCrawl.from(err))
+					cw.Logger.Println(ErrCrawl.from(err))
 				} else {
 					categories <- category
 				}
 			case mw.NamespaceMain:
 				document, err := parseDocument(&page)
 				if err != nil {
-					cw.Logger.Println(errCrawl.from(err))
+					cw.Logger.Println(ErrCrawl.from(err))
 				} else {
 					documents <- document
 				}
 			default:
 				err := fmt.Errorf("Unknown page type: %s\n.", page.Title)
-				cw.Logger.Println(errCrawl.from(err))
+				cw.Logger.Println(ErrCrawl.from(err))
 			}
 		}
 	}()
@@ -94,7 +94,7 @@ func (cw *Crawler) transform(p <-chan mw.Page) (<-chan entity.Category, <-chan e
 func (cw *Crawler) Walk(node *entity.Category) (<-chan entity.Category, <-chan entity.Document, error) {
 	request, err := mw.NewPageRequest(cw.Language, node.Name)
 	if err != nil {
-		return nil, nil, errCrawl.from(err)
+		return nil, nil, ErrCrawl.from(err)
 	}
 	pages := cw.extract(request)
 	categories, documents := cw.transform(pages)

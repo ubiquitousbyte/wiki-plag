@@ -41,7 +41,7 @@ func (p *Pipeline) readOrCreateDoc(doc *entity.Document) (id entity.Id, err erro
 	case err == nil:
 		return databaseDoc.Id, nil
 	default:
-		return id, nil
+		return id, err
 	}
 }
 
@@ -56,7 +56,7 @@ func (p *Pipeline) readOrCreateCategory(c *entity.Category) (id entity.Id, err e
 	case err == nil:
 		return dbCategory.Id, nil
 	default:
-		return id, nil
+		return id, err
 	}
 }
 
