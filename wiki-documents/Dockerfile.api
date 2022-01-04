@@ -1,0 +1,22 @@
+## We specify the base image we need for our
+## go application
+FROM golang:1.17 AS builder
+
+# Switch to application directory
+WORKDIR /go/src/app
+
+# Copy the project source files into the app directory
+COPY . .
+
+# Build all binaries in the current directory
+RUN CGO_ENABLED=0 GOOS=linux go build -o ./ ./... 
+
+FROM alpine:latest 
+# Install certificate authorities
+RUN apk --no-cache add ca-certificates
+# Switch to the root directory
+WORKDIR /root/
+# Copy the API binary from the builder
+COPY --from=builder /go/src/app/ ./ 
+# Run dat bad boy
+CMD ["./wiki-documents"]
