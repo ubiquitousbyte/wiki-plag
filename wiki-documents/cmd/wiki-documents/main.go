@@ -20,7 +20,7 @@ func mongoClient(uri string) *mongo.Client {
 		panic(err)
 	}
 	creds := options.Credential{
-		AuthSource: "documents",
+		AuthSource: "wikiplag",
 		Username:   "wikiplag",
 		Password:   string(password),
 	}
@@ -46,7 +46,7 @@ func main() {
 		middleware.StripSlashes,
 	)
 
-	client := mongoClient("mongodb://localhost:27020")
+	client := mongoClient("mongodb://database:27017")
 
 	documentStore := database.NewMongoDocumentStore(client)
 	documentBackend := document.NewBackend(documentStore)
@@ -57,5 +57,5 @@ func main() {
 	categoryRouter := category.NewRouter(categoryBackend)
 
 	server.RegisterRouters(documentRouter, categoryRouter)
-	log.Fatal(server.ListenAndServe(":8080"))
+	log.Fatal(server.ListenAndServe(":80"))
 }

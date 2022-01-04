@@ -35,7 +35,7 @@ func (m *MongoCategoryStore) ReadCategories() ([]entity.Category, error) {
 		return nil, ErrModelNotFound.from(err)
 	}
 
-	var categories []entity.Category
+	categories := make([]entity.Category, 0)
 	if err = cursor.All(ctx, &categories); err != nil {
 		return nil, ErrInvalidModel.from(err)
 	}
@@ -54,7 +54,7 @@ func (m *MongoCategoryStore) ReadDocsByCategory(id entity.Id) ([]entity.Document
 		return nil, ErrModelNotFound.from(err)
 	}
 
-	var documents []entity.Document
+	documents := make([]entity.Document, 0)
 	if err = cursor.All(ctx, &documents); err != nil {
 		return nil, ErrInvalidModel.from(err)
 	}
