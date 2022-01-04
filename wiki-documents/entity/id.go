@@ -23,3 +23,7 @@ func (id Id) IsValidId() bool {
 func NewEntityId() Id {
 	return Id(primitive.NewObjectID().Hex())
 }
+
+func (id Id) String() string {
+	return string(id)
+}
