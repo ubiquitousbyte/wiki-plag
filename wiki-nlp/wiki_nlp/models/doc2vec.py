@@ -12,13 +12,13 @@ class DMM(nn.Module):
 
     Attributes
     ----------
-    document_count: int
+    document_count : int
         The number of documents used for training the model. 
         This parameter is used to construct the document matrix. 
-    vocabulary_size: int 
+    vocabulary_size : int 
         The size of the vocabulary. This parameter is used to construct 
         the input word matrix. 
-    embedding_size: int
+    embedding_size : int
         The size of the embedding space.
 
     Methods
@@ -31,13 +31,13 @@ class DMM(nn.Module):
         """
         Parameters
         ----------
-        document_count: int
+        document_count : int
             The number of documents used for training the model. 
             This parameter is used to construct the document matrix. 
-        vocabulary_size: int 
+        vocabulary_size : int 
             The size of the vocabulary. This parameter is used to construct 
             the input word matrix. 
-        embedding_size: int
+        embedding_size : int
             The size of the embedding space.
         """
 
@@ -59,13 +59,13 @@ class DMM(nn.Module):
         """
         Parameters
         ----------
-        ctxs: torch.FloatTensor
+        ctxs : torch.FloatTensor
             A matrix that maps context word vectors to the documents
             in which the context words occur. 
-        docs: torch.FloatTensor 
+        docs : torch.FloatTensor 
             A matrix representing a batch of documents that will be linearly
             combined with their respective context word vectors
-        y: torch.FloatTensor
+        y : torch.FloatTensor
             A matrix consisting of vectors that hold noise words and the
             target word (the current center word) for each document.
             The target word must be the first element in the matrix. 
@@ -135,6 +135,7 @@ class Loss(nn.Module):
             All other indices must represent the similarity between the document
             vector and the negative samples.
         """
+
         n = scores.size()[0]
         k = scores.size()[1] - 1
         return -torch.sum(
@@ -152,9 +153,9 @@ class Sampler(object):
 
     Attributes
     ----------
-    vocabulary_size: int
+    vocabulary_size : int
         The number of words in the vocabulary
-    sampling_rate: float 
+    sampling_rate : float 
         The higher the sampling rate, the stricter the sampler enforces 
         uniqueness. 
 
@@ -188,11 +189,11 @@ class _Batch(object):
 
     Attributes
     ----------
-    ctxs: List[List[int]]
+    ctxs : List[List[int]]
 
-    docs: List[int]
+    docs : List[int]
 
-    y: List[List[int]]
+    y : List[List[int]]
 
     Methods
     -------
