@@ -2,6 +2,7 @@ package category
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/ubiquitousbyte/wiki-documents/api/router"
 	"github.com/ubiquitousbyte/wiki-documents/database"
@@ -97,22 +98,28 @@ func (b *backend) Create(category *entity.Category) (id entity.Id, err error) {
 	if err = validateCategory(category); err != nil {
 		return id, err
 	}
-	category.Id = ""
-	id, err = b.store.CreateCategory(category)
-	return
+
+	_, err = b.store.ReadCategoryBySrc(category.Name, category.Source)
+	if errors.Is(err, database.ErrModelNotFound) {
+		category.Id = ""
+		id, err = b.store.CreateCategory(category)
+		return
+	} else if err == nil {
+		msg := fmt.Sprintf("Category with name %s and source %s already exists",
+			category.Name, category.Source)
+		return id, router.ErrEntityBad.With(msg)
+	} else {
+		return id, err
+	}
 }
 
 func (b *backend) Delete(id entity.Id) error {
 	if !id.IsValidId() {
 		return router.ErrEntityBadId.With(id.String())
 	}
-
 	err := b.store.DeleteCategory(id)
 	if errors.Is(err, database.ErrModelNotFound) {
 		return router.ErrEntityNotFound.With(id.String())
-	} else if err != nil {
-		return err
 	}
-
-	return nil
+	return err
 }

@@ -3,6 +3,7 @@ package category
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -67,17 +68,20 @@ func (c *Router) getDocuments(w http.ResponseWriter, r *http.Request) error {
 
 func (c *Router) post(w http.ResponseWriter, r *http.Request) error {
 	var payload entity.Category
+
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		return router.ErrEntityBad
+		return router.ErrEntityBad.From(err)
 	}
 
 	id, err := c.backend.Create(&payload)
 	if err != nil {
+		log.Println(err)
 		return err
 	}
 
 	location, err := url.Parse(fmt.Sprintf("%s/%s", r.URL.Path, id))
 	if err != nil {
+		log.Println(err)
 		return err
 	}
 

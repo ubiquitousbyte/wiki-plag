@@ -60,13 +60,18 @@ func (b *backend) Create(doc *entity.Document) (id entity.Id, err error) {
 		return id, err
 	}
 
-	doc.Id = ""
-	id, err = b.store.CreateDoc(doc)
-	if err != nil {
-		return id, fmt.Errorf("Cannot create document")
+	_, err = b.store.ReadDocBySrc(doc.Title, doc.Source)
+	if errors.Is(err, database.ErrModelNotFound) {
+		doc.Id = ""
+		id, err = b.store.CreateDoc(doc)
+		return
+	} else if err == nil {
+		msg := fmt.Sprintf("Document with name %s and source %s already exists",
+			doc.Title, doc.Source)
+		return id, router.ErrEntityBad.With(msg)
+	} else {
+		return id, err
 	}
-
-	return
 }
 
 func (b *backend) Replace(doc *entity.Document) (err error) {
