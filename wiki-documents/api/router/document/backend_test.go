@@ -47,31 +47,13 @@ func TestGet(t *testing.T) {
 	}
 }
 
-func TestCreate(t *testing.T) {
+func TestCreateInvalid(t *testing.T) {
 	tests := []struct {
 		name  string
 		store database.DocumentStore
 		doc   *entity.Document
 		err   error
 	}{
-		{
-			name:  "create document success",
-			store: &storeMock{make([]entity.Document, 0)},
-			doc: &entity.Document{
-				Title:  "Document 1",
-				Source: "test",
-				Categories: []entity.Id{
-					entity.NewEntityId(),
-				},
-				Paragraphs: []entity.Paragraph{
-					{
-						Title:    "Paragraph 1",
-						Position: 1,
-						Text:     "Some text",
-					},
-				},
-			},
-		},
 		{
 			name:  "create document invalid categories",
 			store: &storeMock{make([]entity.Document, 0)},
@@ -150,7 +132,34 @@ func TestCreate(t *testing.T) {
 	}
 }
 
-func TestReplace(t *testing.T) {
+func TestCreateSuccess(t *testing.T) {
+	doc := &entity.Document{
+		Title:  "Document 1",
+		Source: "test",
+		Categories: []entity.Id{
+			entity.NewEntityId(),
+		},
+		Paragraphs: []entity.Paragraph{
+			{
+				Title:    "Paragraph 1",
+				Position: 1,
+				Text:     "Some text",
+			},
+		},
+	}
+	store := &storeMock{make([]entity.Document, 0)}
+	backend := NewBackend(store)
+	id, err := backend.Create(doc)
+	if err != nil {
+		t.Errorf("Unexpected error when creating document %s", err)
+	}
+
+	if !id.IsValidId() {
+		t.Errorf("Invalid id returned when creating document %s", id.String())
+	}
+}
+
+func TestReplaceNotFound(t *testing.T) {
 	tests := []struct {
 		name  string
 		store database.DocumentStore
@@ -189,7 +198,69 @@ func TestReplace(t *testing.T) {
 	}
 }
 
-func TestDelete(t *testing.T) {
+func TestReplaceSuccess(t *testing.T) {
+	doc := &entity.Document{
+		Id:     entity.NewEntityId(),
+		Title:  "asd",
+		Source: "test",
+		Categories: []entity.Id{
+			entity.NewEntityId(),
+		},
+		Paragraphs: []entity.Paragraph{
+			{
+				Title:    "Paragraph 1",
+				Position: 1,
+				Text:     "Some text",
+			},
+		},
+	}
+	store := &storeMock{[]entity.Document{*doc}}
+
+	replaced := *doc
+	replaced.Title = "replaced title"
+
+	backend := NewBackend(store)
+	err := backend.Replace(&replaced)
+	if err != nil {
+		t.Errorf("Unexpected error when replacing document %s", err)
+	}
+
+	if store.docs[0].Title != replaced.Title {
+		t.Errorf("Document not replaced")
+	}
+}
+
+func TestDeleteSuccess(t *testing.T) {
+	doc := &entity.Document{
+		Id:     entity.NewEntityId(),
+		Title:  "asd",
+		Source: "test",
+		Categories: []entity.Id{
+			entity.NewEntityId(),
+		},
+		Paragraphs: []entity.Paragraph{
+			{
+				Title:    "Paragraph 1",
+				Position: 1,
+				Text:     "Some text",
+			},
+		},
+	}
+	store := &storeMock{[]entity.Document{*doc}}
+
+	backend := NewBackend(store)
+	err := backend.Delete(doc.Id)
+
+	if err != nil {
+		t.Errorf("Unexpected error when replacing document %s", err)
+	}
+
+	if len(store.docs) != 0 {
+		t.Errorf("Document not deleted")
+	}
+}
+
+func TestDeleteNotFound(t *testing.T) {
 	tests := []struct {
 		name  string
 		store database.DocumentStore
