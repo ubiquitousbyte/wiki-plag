@@ -68,7 +68,7 @@ func (c *Router) getDocuments(w http.ResponseWriter, r *http.Request) error {
 func (c *Router) post(w http.ResponseWriter, r *http.Request) error {
 	var payload entity.Category
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		return err
+		return router.ErrEntityBad
 	}
 
 	id, err := c.backend.Create(&payload)

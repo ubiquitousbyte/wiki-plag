@@ -25,7 +25,7 @@ func (d *Router) get(w http.ResponseWriter, r *http.Request) error {
 func (d *Router) post(w http.ResponseWriter, r *http.Request) error {
 	var payload entity.Document
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		return err
+		return router.ErrEntityBad
 	}
 
 	id, err := d.backend.Create(&payload)
@@ -46,7 +46,7 @@ func (d *Router) post(w http.ResponseWriter, r *http.Request) error {
 func (d *Router) put(w http.ResponseWriter, r *http.Request) error {
 	var payload entity.Document
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		return err
+		return router.ErrEntityBad
 	}
 
 	err := d.backend.Replace(&payload)
