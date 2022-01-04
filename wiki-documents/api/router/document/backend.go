@@ -3,7 +3,6 @@ package document
 import (
 	"errors"
 	"fmt"
-	"net/http"
 
 	"github.com/ubiquitousbyte/wiki-documents/api/router"
 	"github.com/ubiquitousbyte/wiki-documents/database"
@@ -11,18 +10,17 @@ import (
 )
 
 func validateDocument(doc *entity.Document) error {
-	code := http.StatusBadRequest
 	if len(doc.Categories) == 0 {
-		return router.NewAPIError(nil, "Document must belong to a category", code)
+		return router.ErrEntityBad.With("Document must have categories")
 	}
 	if len(doc.Paragraphs) == 0 {
-		return router.NewAPIError(nil, "Document must contain a paragraph", code)
+		return router.ErrEntityBad.With("Document must have paragraphs")
 	}
 	if len(doc.Source) == 0 {
-		return router.NewAPIError(nil, "Document must have a source", code)
+		return router.ErrEntityBad.With("Document must have a source")
 	}
 	if len(doc.Title) == 0 {
-		return router.NewAPIError(nil, "Document must have a title", code)
+		return router.ErrEntityBad.With("Document must have a title")
 	}
 	return nil
 }
@@ -44,18 +42,14 @@ func NewBackend(store database.DocumentStore) *backend {
 
 func (b *backend) Get(id entity.Id) (*entity.Document, error) {
 	if !id.IsValidId() {
-		return nil, router.NewAPIError(nil, fmt.Sprintf("Invalid document id %s", id),
-			http.StatusBadRequest)
+		return nil, router.ErrEntityBadId.With(id.String())
 	}
 
 	doc, err := b.store.ReadDoc(id)
-
 	if errors.Is(err, database.ErrModelNotFound) {
-		return nil, router.NewAPIError(err, fmt.Sprintf("Document %s not found", id),
-			http.StatusNotFound)
+		return nil, router.ErrEntityNotFound.With(id.String())
 	} else if err != nil {
-		return nil, router.NewAPIError(nil, "Could not read document",
-			http.StatusInternalServerError)
+		return nil, err
 	}
 
 	return &doc, nil
@@ -69,8 +63,7 @@ func (b *backend) Create(doc *entity.Document) (id entity.Id, err error) {
 	doc.Id = ""
 	id, err = b.store.CreateDoc(doc)
 	if err != nil {
-		return id, router.NewAPIError(nil, "Could not create document",
-			http.StatusInternalServerError)
+		return id, fmt.Errorf("Cannot create document")
 	}
 
 	return
@@ -83,28 +76,21 @@ func (b *backend) Replace(doc *entity.Document) (err error) {
 
 	err = b.store.ReplaceDoc(doc)
 	if errors.Is(err, database.ErrModelNotFound) {
-		return router.NewAPIError(err, fmt.Sprintf("Document %s not found", doc.Id),
-			http.StatusNotFound)
-	} else if err != nil {
-		return router.NewAPIError(nil, "Could not update document",
-			http.StatusInternalServerError)
+		return router.ErrEntityNotFound.With(doc.Id.String())
 	}
 
-	return nil
+	return
 }
 
 func (b *backend) Delete(id entity.Id) error {
 	if !id.IsValidId() {
-		return router.NewAPIError(nil, fmt.Sprintf("Invalid document id %s", id),
-			http.StatusBadRequest)
+		return router.ErrEntityBadId.With(id.String())
 	}
+
 	err := b.store.DeleteDoc(id)
 	if errors.Is(err, database.ErrModelNotFound) {
-		return router.NewAPIError(err, fmt.Sprintf("Document %s not found", id),
-			http.StatusNotFound)
-	} else if err != nil {
-		return router.NewAPIError(nil, "Could not delete document",
-			http.StatusInternalServerError)
+		return router.ErrEntityNotFound.With(id.String())
 	}
-	return nil
+
+	return err
 }

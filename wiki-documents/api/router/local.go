@@ -1,16 +1,14 @@
 package router
 
-import "net/http"
-
 type localRoute struct {
 	method  string
 	path    string
-	handler http.HandlerFunc
+	handler HandlerFunc
 }
 
 var _ Route = (*localRoute)(nil)
 
-func (l *localRoute) Handler() http.HandlerFunc {
+func (l *localRoute) Handler() HandlerFunc {
 	return l.handler
 }
 
@@ -22,7 +20,7 @@ func (l *localRoute) Path() string {
 	return l.path
 }
 
-func newRoute(method, path string, handler http.HandlerFunc) Route {
+func newRoute(method, path string, handler HandlerFunc) Route {
 	route := &localRoute{method: method, path: path, handler: handler}
 	return route
 }

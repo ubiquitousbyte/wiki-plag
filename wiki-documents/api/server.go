@@ -26,9 +26,10 @@ func New(cfg *Config) *Server {
 
 func (s *Server) RegisterRouters(routers ...router.Router) {
 	path := fmt.Sprintf("/api/v%d", s.cfg.Version)
-	for _, router := range routers {
-		for _, route := range router.Routes() {
-			s.mux.MethodFunc(route.Method(), path+route.Path(), route.Handler())
+	for _, r := range routers {
+		for _, route := range r.Routes() {
+			s.mux.MethodFunc(route.Method(), path+route.Path(),
+				router.ErrorMiddleware(route.Handler()))
 		}
 	}
 }
