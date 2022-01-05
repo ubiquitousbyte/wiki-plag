@@ -16,4 +16,5 @@ class Document:
     id: str
     title: str
     source: str
+    categories: List[str]
     paragraphs: List[Paragraph]
