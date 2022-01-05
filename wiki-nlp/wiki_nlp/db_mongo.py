@@ -15,7 +15,7 @@ class MongoDocumentStore(db.DocumentStore):
         self._client = mongo.AsyncIOMotorClient(uri)
         self._db = self._client.wikiplag
 
-    async def read_docs(self, count: int, last_id=None):
+    async def read_docs(self, count: int, last_id=None) -> AsyncIterator[entity.Document]:
         query = {
             "paragraphs": {
                 "$exists": True
@@ -26,7 +26,14 @@ class MongoDocumentStore(db.DocumentStore):
 
         cursor = self._db.documents.find(query).limit(count)
         async for document in cursor:
-            print(document)
+            id = str(document['_id'])
+            title = document['title']
+            source = document['source']
+            paragraphs = [entity.Paragraph(**p)
+                          for p in document['paragraphs']]
+            categories = [str(i) for i in document['categories']]
+            yield entity.Document(id=id, title=title, source=source,
+                                  categories=categories, paragraphs=paragraphs)
 
     def close(self):
         self._client.close()
