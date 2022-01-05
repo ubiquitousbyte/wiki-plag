@@ -143,7 +143,7 @@ class Loss(nn.Module):
             torch.sum(self._loss(-scores[:, 1:])) / k) / n
 
 
-class Sampler(object):
+class Sampler:
     """
     A word sampler that assigns probabilities to every word in the vocabulary.
     Overfrequent words are assigned low probabilities to prevent
@@ -180,7 +180,7 @@ class Sampler(object):
         pass
 
 
-class _Batch(object):
+class _Batch:
     """
     This class represents a batch of training examples.
     The batch consists of a set of documents, the noise samples to use 
