@@ -1,0 +1,17 @@
+{
+    "database": {
+        "uri": "mongodb://localhost:27017",
+        "user": "randomuser",
+        "password": "randompassword"
+    },
+    "etl": {
+        "language": "de",
+        "root": {
+            "name": "Strukturwissenschaft",
+            "source": "mediawiki",
+            "description": ""
+        },
+        "duration": "1h",
+        "interval": "30s"
+    }
+}
