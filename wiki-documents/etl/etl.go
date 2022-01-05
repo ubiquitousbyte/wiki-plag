@@ -5,7 +5,9 @@
 package etl
 
 import (
+	"context"
 	"errors"
+	"time"
 
 	"github.com/ubiquitousbyte/wiki-documents/crawler"
 	"github.com/ubiquitousbyte/wiki-documents/database"
@@ -100,24 +102,39 @@ func (p *Pipeline) walk(category *entity.Category) (<-chan entity.Category, erro
 
 // BFS traverses the graph using the Breadth-First-Search algorithm and
 // persists all nodes to the respective storage
-func (p *Pipeline) BFS(root *entity.Category) error {
+func (p *Pipeline) BFS(duration, interval time.Duration, root *entity.Category) error {
 	queue := []entity.Category{*root}
-	for len(queue) > 0 {
-		current := queue[0]
-		queue = queue[1:]
-		p.CrawlCfg.Logger.Printf("Starting traversal process for %s", current.Name)
 
-		children, err := p.walk(&current)
-		if err != nil {
-			return err
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	defer cancel()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			for len(queue) > 0 {
+				current := queue[0]
+				queue = queue[1:]
+				p.CrawlCfg.Logger.Printf("Starting traversal process for %s", current.Name)
+
+				children, err := p.walk(&current)
+				if err != nil {
+					return err
+				}
+
+				for child := range children {
+					p.CrawlCfg.Logger.Printf("Found child node %s", child.Name)
+					queue = append(queue, child)
+				}
+
+				p.CrawlCfg.Logger.Printf("Successfully loaded %s\n", current.Name)
+			}
+			p.CrawlCfg.Logger.Println("Traversal process finished. Exiting..")
+			return nil
+		case <-ctx.Done():
+			p.CrawlCfg.Logger.Println("Duration expired. Exiting..")
+			return nil
 		}
-
-		for child := range children {
-			p.CrawlCfg.Logger.Printf("Found child node %s", child.Name)
-			queue = append(queue, child)
-		}
-
-		p.CrawlCfg.Logger.Printf("Successfully loaded %s\n", current.Name)
 	}
-	return nil
 }
