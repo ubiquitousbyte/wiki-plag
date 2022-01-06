@@ -11,6 +11,8 @@ import math
 
 import torch
 import torch.nn as nn
+from torch.optim import SGD
+
 import numpy as np
 from numpy.random import default_rng
 
@@ -71,7 +73,9 @@ class DMM(nn.Module):
             requires_grad=True
         )
         self._WP = nn.Parameter(
-            torch.randn(embedding_size, vocabulary_size), requires_grad=True
+            torch.cat((torch.randn(embedding_size, vocabulary_size),
+                      torch.zeros(embedding_size, 1)), dim=1),
+            requires_grad=True
         )
 
     def forward(self, ctxs: torch.FloatTensor, docs: torch.FloatTensor,
@@ -176,7 +180,7 @@ class WordSampler:
     vocabulary_size : int
         The number of words in the vocabulary
     sampling_rate : float 
-        The higher the sampling rate, the stricter the sampler enforces 
+        The lower the sampling rate, the stricter the sampler enforces 
         uniqueness. 
 
     Methods
@@ -216,6 +220,12 @@ class NoiseSampler:
     regression that discriminates the observed data from artificially 
     generated noise.
 
+    Methods
+    -------
+    sample()
+        Returns a list of noise samples.
+        The noise samples are represented as indices to words in the 
+        vocabulary. 
     """
 
     def __init__(self, size: int):
@@ -346,7 +356,7 @@ class _BatchState:
 
         with self._mutex:
             doc_index, word_index = self._doc_index.value, self._word_index.value
-            self._forward(dataset, batch_size, self._ctx_size, e)
+            self._forward(dataset, batch_size, e)
             return doc_index, word_index
 
     def _forward(self, dataset: Dataset, batch_size: int, e: ExampleCounter):
@@ -432,6 +442,9 @@ class _BatchGenerator:
         Therefore, total context size is actually 2*ctx_size
     noise_size : int
         The number of noise words to create per sample in the batch
+    sampling_rate : float 
+        The lower the sampling rate, the stricter the sampler enforces 
+        uniqueness. 
 
     Methods
     -------
@@ -451,7 +464,8 @@ class _BatchGenerator:
     """
 
     def __init__(self, vocab: Vocabulary, dataset: Dataset,
-                 batch_size: int, ctx_size: int, noise_size: int):
+                 batch_size: int, ctx_size: int, noise_size: int,
+                 sampling_rate: float = 0.01):
 
         self.dataset = dataset
         self.batch_size = batch_size
@@ -462,7 +476,7 @@ class _BatchGenerator:
         self.noise_sampler = NoiseSampler(noise_size)
         self.noise_sampler.compute_dist(vocab)
 
-        self.word_sampler = WordSampler()
+        self.word_sampler = WordSampler(sampling_rate)
         self.word_sampler.compute_dist(vocab)
 
         self._state = _BatchState(self.ctx_size)
@@ -476,8 +490,7 @@ class _BatchGenerator:
         while len(batch) < self.batch_size:
             if doc_index == len(self.dataset):
                 # All documents have been processed
-                # Torchify the batch and return it
-                batch.torchify()
+                # Return the batch
                 break
 
             # Compute the remaining number of context words
@@ -485,7 +498,7 @@ class _BatchGenerator:
             remaining = len(self.dataset[doc_index]) - 1 - self.ctx_size
             if word_index <= remaining:
                 # Extract the index of the current word in the vocabulary
-                vi = self.vocab[self.dataset[doc_index][word_index]] - 1
+                vi = self.vocab[self.dataset[doc_index][word_index].lemma]
 
                 if self.vocab.itos(vi) in self.word_sampler:
                     # The word sampler has determined that the
@@ -526,7 +539,7 @@ class _BatchGenerator:
         doc = self.dataset[doc_index]
 
         # Add the target word to the noise as the first index
-        noise.insert(0, self.vocab[doc[word_index]] - 1)
+        noise.insert(0, self.vocab[doc[word_index].lemma])
         # Add the noise and target word to the batch
         batch.y.append(noise)
 
@@ -539,7 +552,7 @@ class _BatchGenerator:
                        range(-self.ctx_size, self.ctx_size+1)
                        if diff != 0)
         for i in ctx_indexes:
-            index = self.vocab[doc[i]] - 1
+            index = self.vocab[doc[i].lemma]
             ctx.append(index)
         batch.ctxs.append(ctx)
 
@@ -571,6 +584,9 @@ class BatchGenerator:
         The number of noise words to create per sample in the batch
     workers : int
         The number of processes to use for batch generation 
+    sampling_rate : float 
+        The lower the sampling rate, the stricter the sampler enforces 
+        uniqueness. 
 
     Methods
     -------
@@ -587,8 +603,9 @@ class BatchGenerator:
         Returns true if the batch generator is running
     """
 
-    def __init__(self, vocab: Vocabulary, dataset: Dataset, batch_size: int,
-                 ctx_size: int, noise_size: int, max_size: int, workers: int):
+    def __init__(self, vocab: Vocabulary, dataset: Dataset,
+                 batch_size: int, ctx_size: int, noise_size: int,
+                 max_size: int = 1, workers: int = 1, sampling_rate: float = 0.01):
         self.max_size = max_size
         self.num_workers = (workers if workers > 0
                             else multiprocessing.cpu_count())
@@ -648,3 +665,73 @@ class BatchGenerator:
     def forward(self):
         while self.is_running():
             yield self._queue.get()
+
+
+def train_dmm(vocab: Vocabulary, dataset: Dataset, embedding_size: int,
+              epochs: int, lr: float, batch_count: int, batch_size: int,
+              ctx_size: int, noise_size: int, workers: int):
+    """
+    Trains a Distributed Memory Model of Paragraph Vectors.
+
+    Parameters
+    ----------
+    vocab : Vocabulary
+        The vocabulary of words 
+    dataset : Dataset
+        The dataset to train the model on
+    embedding_size : int 
+        The size of a document/word embedding 
+    epochs : int 
+        The number of epochs to train the model for 
+    lr : float 
+        The learning rate used during training 
+    batch_count : int 
+        The number of batches to use for each epoch 
+    batch_size : int 
+        The number of samples in a batch 
+    ctx_size : int 
+        The relative context size of a center word. 
+        The size is relative because it only denotes the number of context 
+        words on ONE side of a center word.
+        Therefore, total context size is actually 2*ctx_size
+    noise_size : int 
+        The number of noise samples to draw when computing the loss
+    workers : int 
+        The number of processes to use for batch generation
+    """
+
+    model = DMM(document_count=len(dataset), vocabulary_size=len(
+        vocab), embedding_size=embedding_size)
+    optimizer = SGD(params=model.parameters(), lr=lr)
+    loss_func = Loss()
+
+    if torch.cuda.is_available():
+        model.cuda()
+
+    batch_generator = BatchGenerator(vocab, dataset, batch_size, ctx_size,
+                                     noise_size, 2, workers)
+    gen = batch_generator.forward()
+
+    batch_generator.start()
+    try:
+        for _ in range(0, epochs):
+            loss = []
+
+            for _ in range(batch_count):
+                batch: _Batch = next(gen)
+                if torch.cuda.is_available():
+                    batch.cudify()
+
+                x = model.forward(batch.ctxs, batch.docs, batch.y)
+
+                J = loss_func.forward(x)
+
+                loss.append(J.item())
+                model.zero_grad()
+                J.backward()
+                optimizer.step()
+
+            loss = torch.mean(torch.FloatTensor(loss))
+            print('\nLoss', loss)
+    except KeyboardInterrupt:
+        batch_generator.stop()
