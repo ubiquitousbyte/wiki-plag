@@ -710,9 +710,9 @@ def train_dmm(vocab: Vocabulary, dataset: Dataset, embedding_size: int,
 
     batch_generator = BatchGenerator(vocab, dataset, batch_size, ctx_size,
                                      noise_size, 2, workers)
+    batch_generator.start()
     gen = batch_generator.forward()
 
-    batch_generator.start()
     try:
         for _ in range(0, epochs):
             loss = []
