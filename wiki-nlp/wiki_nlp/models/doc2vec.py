@@ -484,8 +484,10 @@ class _BatchGenerator:
             # in the current document
             remaining = len(self.dataset[doc_index]) - 1 - self.ctx_size
             if word_index <= remaining:
-                w = self.vocab[self.dataset[doc_index][word_index] - 1]
-                if w in self.word_sampler:
+                # Extract the index of the current word in the vocabulary
+                vi = self.vocab[self.dataset[doc_index][word_index]] - 1
+
+                if self.vocab.itos(vi) in self.word_sampler:
                     # The word sampler has determined that the
                     # current word is unique enough to be included
                     # in the batch

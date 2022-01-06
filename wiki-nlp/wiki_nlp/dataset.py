@@ -76,6 +76,9 @@ class Vocabulary:
     def get_default_index(self) -> int:
         return len(self.vocab)
 
+    def itos(self, index: int) -> str:
+        return self.vocab.lookup_token(index)
+
 
 class Dataset(dataset.Dataset):
     """
