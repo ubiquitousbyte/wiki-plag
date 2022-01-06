@@ -1,18 +1,25 @@
-from typing import AsyncIterator
+from typing import Iterator
+from dataclasses import dataclass
 
-from wiki_nlp.entity import Document
+
+@dataclass
+class Document:
+    doc_id: str
+    position: int
+    title: str
+    text: str
 
 
 class DocumentStore:
     """
     DocumentStore provides an interface 
-    for asynchronously querying documents from a data repository. 
+    for querying documents from a data repository. 
 
     Methods
     -------
-    read_docs(count: int, last_id=None) -> AsyncIterator[Document]
+    read_docs(count: int, last_id=None) -> Iterator[Document]
         Reads count documents from the underlying store and returns 
-        an asynchronous iterator of documents. 
+        an iterator of documents. 
         If last_id is set to None, then the retrieved documents will be 
         the first count documents found in the data store. 
         If last_id is not None, then the retrieved documents will begin 
@@ -20,7 +27,7 @@ class DocumentStore:
 
     """
 
-    async def read_docs(self, count: int, last_id=None) -> AsyncIterator[Document]:
+    def read_docs(self, count: int, last_id=None) -> Iterator[Document]:
         """
         Parameters
         ----------

@@ -1,46 +1,41 @@
-from typing import AsyncIterator
-import asyncio
+from typing import Iterator
 
-import motor.motor_asyncio as mongo
+import pymongo
+from bson import ObjectId
 
-from . import (
-    db,
-    entity
+from wiki_nlp.db import (
+    Document,
+    DocumentStore
 )
 
 
-class MongoDocumentStore(db.DocumentStore):
+class MongoDocumentStore(DocumentStore):
 
     def __init__(self, uri: str):
-        self._client = mongo.AsyncIOMotorClient(uri)
+        self._client = pymongo.MongoClient(uri)
         self._db = self._client.wikiplag
 
-    async def read_docs(self, count: int, last_id=None) -> AsyncIterator[entity.Document]:
+    def read_docs(self, count: int, last_id=None) -> Iterator[Document]:
         query = {
             "paragraphs": {
                 "$exists": True
             }
         }
         if last_id is not None:
-            query["_id"] = {"$gt": last_id}
+            if isinstance(last_id, str):
+                oid = ObjectId(last_id)
+            elif isinstance(last_id, ObjectId):
+                oid = last_id
+            query["_id"] = {"$gt": oid}
 
         cursor = self._db.documents.find(query).limit(count)
-        async for document in cursor:
-            id = str(document['_id'])
-            title = document['title']
-            source = document['source']
-            paragraphs = [entity.Paragraph(**p)
-                          for p in document['paragraphs']]
-            categories = [str(i) for i in document['categories']]
-            yield entity.Document(id=id, title=title, source=source,
-                                  categories=categories, paragraphs=paragraphs)
+
+        for document in cursor:
+            doc_id = str(document['_id'])
+            for p in document['paragraphs']:
+                text = p['text']
+                yield Document(doc_id=doc_id, position=p['position'],
+                               title=p['title'], text=text)
 
     def close(self):
         self._client.close()
-
-
-if __name__ == '__main__':
-    store = MongoDocumentStore(
-        "mongodb://wikiplag:wikiplag2021@localhost:27017/wikiplag")
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(store.read_docs(10))
