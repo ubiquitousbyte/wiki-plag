@@ -331,7 +331,7 @@ class DMM(nn.Module):
 
         if state_path is not None:
             state = dataclasses.asdict(state)
-            torch.save(state_path, state)
+            torch.save(state, state_path)
 
         return model, state
 
