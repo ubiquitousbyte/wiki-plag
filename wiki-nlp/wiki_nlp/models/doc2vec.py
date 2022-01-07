@@ -1,19 +1,25 @@
 from typing import (
+    Any,
     Generator,
     Optional,
     Callable,
     Tuple,
-    List
+    List,
+    OrderedDict
 )
-from dataclasses import dataclass
+
+import dataclasses
+
 import multiprocessing
 import os
 import signal
 import math
+from sys import stdout
 
 import torch
 import torch.nn as nn
 from torch.nn.functional import cosine_similarity
+from torch.functional import Tensor
 from torch.optim import SGD
 
 import numpy as np
@@ -27,7 +33,7 @@ from wiki_nlp.dataset import (
 from wiki_nlp.text import Token
 
 
-@dataclass
+@dataclasses.dataclass
 class DMMConfig:
     """
     Configuration class for training and predicting document vectors 
@@ -72,6 +78,29 @@ class DMMConfig:
     workers: int
 
 
+@dataclasses.dataclass
+class DMMState:
+    """
+    Model state class returned by a training procedure 
+
+    Attributes
+    ----------
+    epoch : int
+        The current epoch 
+    loss : float 
+        The loss value computed for the current epoch
+    model_state : OrderedDict[str, Tensor]
+        A dictionary holding the model parameters
+    optimizer_state : OrderedDict[str, Tensor]
+        A dictionary holding the optimizer parameters 
+    """
+
+    epoch: int
+    loss: float
+    model_state: OrderedDict[str, Tensor]
+    optimizer_state: OrderedDict[str, Tensor]
+
+
 class DMM(nn.Module):
     """
     A class used to represent an implementation of the
@@ -95,6 +124,18 @@ class DMM(nn.Module):
     -------
     forward(ctxs: torch.FloatTensor, docs: torch.FloatTensor, y: torch.FloatTensor)
         Computes the forward step of the model
+
+    train(cfg: DMMConfig) -> Tuple[DMM, DMMState]
+        Trains the model given the model configuration and returns it to the caller
+
+    predict(cfg: DMMConfig) -> torch.FloatTensor
+        Runs the inference stage on the dataset specified in the model configuration
+        and returns a matrix holding the predicted document vectors for each
+        document in the dataset. 
+
+    most_similar(vectors: torch.FloatTensor, topn: int) -> Tuple[torch.FloatTensor, torch.IntTensor]
+        Extracts the most similar documents to the input vectors from the 
+        document matrix and returns their values and their indices to the caller 
     """
 
     def __init__(self, document_count: int, vocabulary_size: int, embedding_size: int):
@@ -122,7 +163,7 @@ class DMM(nn.Module):
         )
         self._WP = nn.Parameter(
             torch.cat((torch.randn(embedding_size, vocabulary_size),
-                      torch.zeros(embedding_size, 1)), dim=1),
+                      torch.zeros(embedding_size, 1)), dim=1).zero_(),
             requires_grad=True
         )
 
@@ -179,8 +220,28 @@ class DMM(nn.Module):
         return torch.bmm(h.unsqueeze(1), self._WP[:, y].permute(1, 0, 2)).squeeze()
 
     @staticmethod
+    def _print_progress(batch: int, epoch: int, batch_count: int):
+        """
+        Prints the model's progress
+
+        Parameters
+        ----------
+        batch : int 
+            The index of the current batch being processed
+        epoch : int 
+            The current epoch being processed
+        batch_count : int 
+            The total number of batches 
+        """
+
+        step_progress = round((batch + 1) / batch_count * 100)
+        print("\rEpoch {:d}".format(epoch + 1), end='')
+        stdout.write(" - {:d}%".format(step_progress))
+        stdout.flush()
+
+    @staticmethod
     def _run_dmm(model: 'DMM', generator: Generator, optimizer: SGD,
-                 batch_count: int, epochs: int):
+                 batch_count: int, epochs: int) -> DMMState:
         """
         Runs a loaded distributed memory model 
 
@@ -198,14 +259,17 @@ class DMM(nn.Module):
             The number of epochs to run the model for 
         """
 
+        state = DMMState(epoch=0, loss=float("inf"),
+                         model_state=None, optimizer_state=None)
+
         loss_func = Loss()
 
         if torch.cuda.is_available():
             model.cuda()
 
-        for _ in range(0, epochs):
+        for epoch_index in range(0, epochs):
             loss = []
-            for _ in range(batch_count):
+            for batch_index in range(batch_count):
                 batch: _Batch = next(generator)
 
                 if torch.cuda.is_available():
@@ -221,19 +285,32 @@ class DMM(nn.Module):
                 model.zero_grad()
                 J.backward()
                 optimizer.step()
+                DMM._print_progress(batch_index, epoch_index, batch_count)
 
             loss = torch.mean(torch.FloatTensor(loss))
             print("\nLoss", loss)
 
+            is_best_loss = loss < state.loss
+            if is_best_loss:
+                state.epoch = epoch_index + 1
+                state.loss = loss.item()
+                state.model_state = model.state_dict()
+                state.optimizer_state = optimizer.state_dict()
+
+        return state
+
     @staticmethod
-    def train(cfg: DMMConfig):
+    def train(cfg: DMMConfig, state_path: str = None) -> 'DMM':
         """
-        Train a distributed memory model of paragraph vectors 
+        Train a distributed memory model of paragraph vectors.
+        This function returns the trained model. 
 
         Parameters
         ----------
         cfg: DMMConfig 
             The configuration to use 
+        state_path : str 
+            The path to save the model's state to
         """
 
         model = DMM(document_count=len(cfg.dataset), vocabulary_size=len(cfg.vocab),
@@ -246,11 +323,17 @@ class DMM(nn.Module):
                             workers=cfg.workers)
         bg.start()
         generator = bg.forward()
-        try:
-            DMM._run_dmm(model=model, generator=generator, optimizer=optimizer,
-                         batch_count=cfg.batch_count, epochs=cfg.epochs)
-        except KeyboardInterrupt:
-            bg.stop()
+
+        state = DMM._run_dmm(model=model, generator=generator, optimizer=optimizer,
+                             batch_count=cfg.batch_count, epochs=cfg.epochs)
+
+        bg.stop()
+
+        if state_path is not None:
+            state = dataclasses.asdict(state)
+            torch.save(state_path, state)
+
+        return model, state
 
     def predict(self, cfg: DMMConfig) -> torch.FloatTensor:
         """
@@ -487,22 +570,35 @@ class _Batch:
     """
 
     def __init__(self, ctx_size: int):
+        """
+        Parameters
+        ----------
+        ctx_size : int
+            The relative context size of a center word.
+            The size is relative because it only denotes the number of context
+            words on ONE side of a center word.
+            Therefore, total context size is actually 2*ctx_size
+        """
+
         self.ctxs = [] if ctx_size > 0 else None
         self.docs = []
         self.y = []
 
     def __len__(self):
         """Returns the size of the batch"""
+
         return len(self.docs)
 
     def torchify(self):
         """Converts the batch attributes to tensors"""
+
         self.ctxs = torch.LongTensor(self.ctxs)
         self.docs = torch.LongTensor(self.docs)
         self.y = torch.LongTensor(self.y)
 
     def cudify(self):
         """Converts the batch attributes to CUDA vectors"""
+
         if self.ctxs is not None:
             self.ctxs = self.ctxs.cuda()
         self.docs = self.docs.cuda()
