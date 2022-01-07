@@ -393,6 +393,15 @@ class WordSampler:
         self.sampling_rate = sampling_rate
 
     def compute_dist(self, vocab: Vocabulary):
+        """
+        Computes the word sampling distribution
+
+        Parameters
+        ----------
+        vocab : Vocabulary
+            The vocabulary for which the distribution will be computed
+        """
+
         self._sampler = {}
         wc = len(vocab)
         for word, freq in vocab.counter.items():
@@ -401,6 +410,10 @@ class WordSampler:
             self._sampler[word] = p
 
     def __contains__(self, word: str) -> bool:
+        """
+        Returns True if the sampler determines the word to be unique enough.
+        """
+
         return self._sampler[word] > np.random.random_sample()
 
 
@@ -497,8 +510,6 @@ class _Batch:
 
 
 """
-
-
 A function pointer that, given a document(a list of tokens), counts
 the number of words that are still to be processed relative to the
 index of the current center word.
@@ -531,6 +542,16 @@ class _BatchState:
     """
 
     def __init__(self, ctx_size: int):
+        """
+        Parameters
+        ----------
+        ctx_size : int 
+            The relative context size of a center word.
+            The size is relative because it only denotes the number of context
+            words on ONE side of a center word.
+            Therefore, total context size is actually 2*ctx_size
+        """
+
         self._doc_index = multiprocessing.RawValue('i', 0)
         self._word_index = multiprocessing.RawValue('i', ctx_size)
         self._mutex = multiprocessing.Lock()
@@ -664,6 +685,26 @@ class _BatchGenerator:
     def __init__(self, vocab: Vocabulary, dataset: Dataset,
                  batch_size: int, ctx_size: int, noise_size: int,
                  sampling_rate: float = 0.01):
+        """
+        Parameters
+        ----------
+        vocab: Vocabulary
+            The vocabulary to sample words from.
+        dataset: Dataset
+            The dataset of documents to yield batches from
+        batch_size: int
+            The number of samples to put in a single batch
+        ctx_size: int
+            The relative context size of a center word.
+            The size is relative because it only denotes the number of context
+            words on ONE side of a center word.
+            Therefore, total context size is actually 2*ctx_size
+        noise_size: int
+            The number of noise words to create per sample in the batch
+        sampling_rate: float
+            The lower the sampling rate, the stricter the sampler enforces
+            uniqueness.
+        """
 
         self.dataset = dataset
         self.batch_size = batch_size
@@ -680,6 +721,8 @@ class _BatchGenerator:
         self._state = _BatchState(self.ctx_size)
 
     def forward(self) -> _Batch:
+        """Generates a batch and returns it to the caller"""
+
         doc_index, word_index = self._state.forward(
             self.dataset, self.batch_size, self.example_counter)
 
@@ -766,22 +809,24 @@ class BatchGenerator:
 
     Attributes
     ----------
-    vocab: Vocabulary
+    vocab : Vocabulary
         The vocabulary to sample words from.
-    dataset: Dataset
+    dataset : Dataset
         The dataset of documents to yield batches from
-    batch_size: int
+    batch_size : int
         The number of samples to put in a single batch
-    ctx_size: int
+    ctx_size : int
         The relative context size of a center word.
         The size is relative because it only denotes the number of context
         words on ONE side of a center word.
         Therefore, total context size is actually 2*ctx_size
-    noise_size: int
+    noise_size : int
         The number of noise words to create per sample in the batch
-    workers: int
+    max_size : int 
+        The maximum number of batches to generate in a non-blocking fashion
+    workers : int
         The number of processes to use for batch generation
-    sampling_rate: float
+    sampling_rate : float
         The lower the sampling rate, the stricter the sampler enforces
         uniqueness.
 
@@ -803,18 +848,45 @@ class BatchGenerator:
     def __init__(self, vocab: Vocabulary, dataset: Dataset,
                  batch_size: int, ctx_size: int, noise_size: int,
                  max_size: int = 1, workers: int = 1, sampling_rate: float = 0.01):
+        """
+        Parameters
+        ----------
+        vocab : Vocabulary
+            The vocabulary to sample words from.
+        dataset : Dataset
+            The dataset of documents to yield batches from
+        batch_size : int
+            The number of samples to put in a single batch
+        ctx_size : int
+            The relative context size of a center word.
+            The size is relative because it only denotes the number of context
+            words on ONE side of a center word.
+            Therefore, total context size is actually 2*ctx_size
+        noise_size : int
+            The number of noise words to create per sample in the batch
+        max_size : int 
+            The maximum number of batches to generate in a non-blocking fashion
+        workers : int
+            The number of processes to use for batch generation
+        sampling_rate : float
+            The lower the sampling rate, the stricter the sampler enforces
+            uniqueness.
+        """
+
         self.max_size = max_size
         self.num_workers = (workers if workers > 0
                             else multiprocessing.cpu_count())
 
         self._generator = _BatchGenerator(vocab, dataset, batch_size,
-                                          ctx_size, noise_size)
+                                          ctx_size, noise_size, sampling_rate)
 
         self._queue = None
         self._stop_event = None
         self._processes = []
 
     def start(self):
+        """Starts all workers that generate batches"""
+
         self._queue = multiprocessing.Queue(maxsize=self.max_size)
         self._stop_event = multiprocessing.Event()
 
@@ -825,6 +897,11 @@ class BatchGenerator:
             worker.start()
 
     def _work(self):
+        """
+        Worker function that generates batches. 
+        Each process runs this function
+        """
+
         while not self._stop_event.is_set():
             try:
                 batch = self._generator.forward()
@@ -833,6 +910,12 @@ class BatchGenerator:
                 self._stop_event.set()
 
     def __getstate__(self):
+        """
+        Processes cannot be pickled.
+        This function truncates the instance variable that holds all processes
+        to avoid stupid Python exceptions.
+        """
+
         state = self.__dict__.copy()
         state['_processes'] = None
         return state
@@ -841,6 +924,8 @@ class BatchGenerator:
         return len(self._generator)
 
     def stop(self):
+        """Kills all workers"""
+
         if self.is_running():
             self._stop_event.set()
 
@@ -856,9 +941,15 @@ class BatchGenerator:
         self._stop_event = None
         self._processes = []
 
-    def is_running(self):
+    def is_running(self) -> bool:
+        """Returns True there are still workers that are running"""
+
         return self._stop_event is not None and not self._stop_event.is_set()
 
-    def forward(self):
+    def forward(self) -> Generator:
+        """
+        Returns a batch generator that yields batch objects 
+        """
+
         while self.is_running():
             yield self._queue.get()
