@@ -14,8 +14,7 @@ PAT_ALPHABETIC = re.compile('(((?![\d])\w)+)', re.UNICODE)
 
 @dataclass
 class Token:
-    token: str
-    lemma: str
+    data: str
     pos: str
 
 
@@ -50,7 +49,7 @@ class TextProcessor:
         self._pipeline = spacy.load(
             "de_core_news_md", exclude=self._REDUNDANT_PIPES)
 
-    def tokenize(self, text: str) -> Iterator[Token]:
+    def tokenize(self, text: str, use_lemmas: bool = False) -> Iterator[Token]:
         """
         Parameters
         ----------
@@ -60,6 +59,9 @@ class TextProcessor:
 
         doc = self._pipeline(text)
         for token in doc:
-            m = PAT_ALPHABETIC.match(token.lemma_.lower())
+            if use_lemmas:
+                m = PAT_ALPHABETIC.match(token.lemma_.lower())
+            else:
+                m = PAT_ALPHABETIC.match(token.text.lower())
             if m is not None:
-                yield Token(token=token.text, lemma=m.group(), pos=token.pos)
+                yield Token(data=m.group(), pos=token.pos)

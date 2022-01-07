@@ -1,5 +1,6 @@
 from typing import (
     Iterable,
+    Iterator,
     OrderedDict,
     Tuple,
     List,
@@ -42,26 +43,19 @@ class Vocabulary:
     def __init__(self):
         self.counter = Counter()
 
-    def build(self, tokens: Iterable[Token], use_lemmas: bool, min_freq: int):
+    def build(self, tokens: Iterable[Token], min_freq: int):
         """
         Parameters
         ----------
         tokens : Iterable[Token]
             The tokens to construct the vocabulary from
-        use_lemmas : bool 
-            If True, the vocabulary will use the lematized versions of 
-            the tokens to construct itself 
         min_freq : int 
             The minimal amount of times a token needs to occur 
             to be added by the vocabulary. 
         """
 
-        if use_lemmas:
-            self.counter.update([t.lemma for t in tokens])
-        else:
-            self.counter.update([t.token for t in tokens])
-        self.vocab = vocab(OrderedDict(
-            self.counter.items()), min_freq=min_freq)
+        self.counter.update([t.data for t in tokens])
+        self.vocab = vocab(OrderedDict(self.counter.items()), min_freq)
         self.vocab.set_default_index(len(self.vocab))
 
     def __len__(self) -> int:
@@ -98,33 +92,44 @@ class Dataset(dataset.Dataset):
         associated with the sample in the dataset at the given index 
     """
 
-    def __init__(self, store: db.DocumentStore, size: int):
+    def __init__(self, data: Iterable[Iterable[Token]]):
         """
         Parameters
         ----------
-        store : DocumentStore
-            The document store to construct the dataset from 
-        size : int 
-            The desired size of the dataset. This represents the number 
-            of documents that will be extracted from the document store.
+        data : Iterable[Iterable[Token]]
+            An iterable of documents.
+            Each document is represented as an iterable of tokens
         """
 
         super(Dataset, self).__init__()
+        self._dataset = data
+
+    @classmethod
+    def from_documents(cls, documents: Iterator[db.Document],
+                       use_lemmas: bool) -> 'Dataset':
+        """
+        Constructs a dataset from an iterator of database documents
+
+        Parameters
+        ----------
+        documents : Iterator[db.Document]
+            The documents to construct the dataset from 
+
+        use_lemmas : bool
+            Set to true if the dataset should be constructed from the lemmatized
+            versions of each token found in a document
+        """
+
         processor = TextProcessor()
-        self._dataset = []
-        self._paragraphs = {}
-        for sample in store.read_docs(size):
-            sample_tokens = list(processor.tokenize(sample.text))
-            if len(sample_tokens) > 0:
-                self._dataset.append(sample_tokens)
-                self._paragraphs[len(self._dataset) -
-                                 1] = (sample.doc_id, sample.title)
+        data = []
+        for example in documents:
+            tokens = list(processor.tokenize(example.text, use_lemmas))
+            if len(tokens) > 0:
+                data.append(tokens)
+        return cls(data)
 
     def __getitem__(self, index: int) -> List[Token]:
         return self._dataset[index]
 
     def __len__(self):
         return len(self._dataset)
-
-    def get_document(self, index: int) -> Tuple[str, str]:
-        return self._paragraphs[index]
