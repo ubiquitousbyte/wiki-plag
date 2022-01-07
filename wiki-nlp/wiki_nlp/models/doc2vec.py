@@ -1,9 +1,11 @@
 from typing import (
+    Generator,
     Optional,
     Callable,
     Tuple,
     List
 )
+from dataclasses import dataclass
 import multiprocessing
 import os
 import signal
@@ -11,6 +13,7 @@ import math
 
 import torch
 import torch.nn as nn
+from torch.nn.functional import cosine_similarity
 from torch.optim import SGD
 
 import numpy as np
@@ -24,23 +27,68 @@ from wiki_nlp.dataset import (
 from wiki_nlp.text import Token
 
 
-class DMM(nn.Module):
+@dataclass
+class DMMConfig:
     """
-    A class used to represent an implementation of the 
-    Distributed Memory Model of Paragraph Vectors proposed by
-    Mikholov et. al. in Distributed Representations of Sentences and Documents.
-
-    The original paper can be found at https://arxiv.org/abs/1405.4053
+    Configuration class for training and predicting document vectors 
+    via the Distributed Memory Model  
 
     Attributes
     ----------
-    document_count : int
-        The number of documents used for training the model. 
-        This parameter is used to construct the document matrix. 
-    vocabulary_size : int 
-        The size of the vocabulary. This parameter is used to construct 
-        the input word matrix. 
+    vocab : Vocabulary
+        The vocabulary of words
+    dataset : Dataset
+        The dataset to train the model on
     embedding_size : int
+        The size of a document/word embedding
+    epochs : int
+        The number of epochs to train the model for
+    lr : float
+        The learning rate used during training
+    batch_count : int
+        The number of batches to use for each epoch
+    batch_size : int
+        The number of samples in a batch
+    ctx_size : int
+        The relative context size of a center word.
+        The size is relative because it only denotes the number of context
+        words on ONE side of a center word.
+        Therefore, total context size is actually 2*ctx_size
+    noise_size : int
+        The number of noise samples to draw when computing the loss
+    workers : int
+        The number of processes to use for batch generation
+    """
+
+    vocab: Vocabulary
+    dataset: Dataset
+    embedding_size: int
+    epochs: int
+    lr: float
+    batch_count: int
+    batch_size: int
+    ctx_size: int
+    noise_size: int
+    workers: int
+
+
+class DMM(nn.Module):
+    """
+    A class used to represent an implementation of the
+    Distributed Memory Model of Paragraph Vectors proposed by
+    Mikholov et. al. in Distributed Representations of Sentences and Documents.
+
+    The original paper can be found at https: // arxiv.org/abs/1405.4053
+
+    Attributes
+    ----------
+    document_count: int
+        The number of documents used for training the model.
+        This parameter is used to construct the document matrix.
+    vocabulary_size: int
+        The size of the vocabulary. This parameter is used to construct
+        the input word matrix.
+    embedding_size: int
         The size of the embedding space.
 
     Methods
@@ -53,13 +101,13 @@ class DMM(nn.Module):
         """
         Parameters
         ----------
-        document_count : int
-            The number of documents used for training the model. 
-            This parameter is used to construct the document matrix. 
-        vocabulary_size : int 
-            The size of the vocabulary. This parameter is used to construct 
-            the input word matrix. 
-        embedding_size : int
+        document_count: int
+            The number of documents used for training the model.
+            This parameter is used to construct the document matrix.
+        vocabulary_size: int
+            The size of the vocabulary. This parameter is used to construct
+            the input word matrix.
+        embedding_size: int
             The size of the embedding space.
         """
 
@@ -83,30 +131,30 @@ class DMM(nn.Module):
         """
         Parameters
         ----------
-        ctxs : torch.FloatTensor
+        ctxs: torch.FloatTensor
             A matrix that maps context word vectors to the documents
-            in which the context words occur. 
-        docs : torch.FloatTensor 
+            in which the context words occur.
+        docs: torch.FloatTensor
             A matrix representing a batch of documents that will be linearly
             combined with their respective context word vectors
-        y : torch.FloatTensor
+        y: torch.FloatTensor
             A matrix consisting of vectors that hold noise words and the
-            target word (the current center word) for each document.
-            The target word must be the first element in the matrix. 
+            target word(the current center word) for each document.
+            The target word must be the first element in the matrix.
 
         Example
         -------
         Let docs be a batch consisting of 5 documents.
-        Let ctxs be a word vector batch of 5 contexts (one for each document), 
+        Let ctxs be a word vector batch of 5 contexts(one for each document),
         where each context consists of 10 context words.
-        Let the number of noise samples per document be 10. 
+        Let the number of noise samples per document be 10.
 
         The forward pass consists of two phases.
 
         Phase 1 (Input -> Hidden)
         -------------------------
-        We perform a linear transformation on the context vectors and the 
-        document vectors. 
+        We perform a linear transformation on the context vectors and the
+        document vectors.
         Assuming an embedding size of 100, we compute:
 
         [5 x 100] + [5 x ∑ [10 x 100]] = [5 x 100] + [5 x 100] = [5 x 100]
@@ -117,25 +165,173 @@ class DMM(nn.Module):
         Phase 2 (Hidden -> Output)
         --------------------------
         We compute the similarity between the hidden state and the target word,
-        as well as between the hidden state and the noise samples. 
+        as well as between the hidden state and the noise samples.
         Assuming an embedding size of 100, we compute:
 
-        [5 x 1 x 100] x [100 x 5 x 11] = [5 x 1 x 11]
+        [5 x 1 x 100] x[100 x 5 x 11] = [5 x 1 x 11]
 
-        We remove the redundant dimension and [5 x 1 x 11] becomes [5 x 11]. 
+        We remove the redundant dimension and [5 x 1 x 11] becomes[5 x 11].
         Thus, for each of the documents in the batch, we obtain a similarity
-        metric to its target word (1) and its context words (10).
+        metric to its target word(1) and its context words(10).
         """
 
         h = torch.add(self._D[docs, :], torch.sum(self._W[ctxs, :], dim=1))
         return torch.bmm(h.unsqueeze(1), self._WP[:, y].permute(1, 0, 2)).squeeze()
 
+    @staticmethod
+    def _run_dmm(model: 'DMM', generator: Generator, optimizer: SGD,
+                 batch_count: int, epochs: int):
+        """
+        Runs a loaded distributed memory model 
+
+        Parameters
+        ----------
+        model : DMM
+            The model to run 
+        generator : Generator 
+            A generator that yields batches 
+        optimizer : SGD
+            The stochastic gradient descent optimizer to use 
+        batch_count : int 
+            The number of batches to use on each epoch
+        epochs : int 
+            The number of epochs to run the model for 
+        """
+
+        loss_func = Loss()
+
+        if torch.cuda.is_available():
+            model.cuda()
+
+        for _ in range(0, epochs):
+            loss = []
+            for _ in range(batch_count):
+                batch: _Batch = next(generator)
+
+                if torch.cuda.is_available():
+                    batch.cudify()
+
+                # Forward pass
+                x = model.forward(batch.ctxs, batch.docs, batch.y)
+                J = loss_func.forward(x)
+
+                loss.append(J.item())
+
+                # Backward pass
+                model.zero_grad()
+                J.backward()
+                optimizer.step()
+
+            loss = torch.mean(torch.FloatTensor(loss))
+            print("\nLoss", loss)
+
+    @staticmethod
+    def train(cfg: DMMConfig):
+        """
+        Train a distributed memory model of paragraph vectors 
+
+        Parameters
+        ----------
+        cfg: DMMConfig 
+            The configuration to use 
+        """
+
+        model = DMM(document_count=len(cfg.dataset), vocabulary_size=len(cfg.vocab),
+                    embedding_size=cfg.embedding_size)
+        optimizer = SGD(params=model.parameters(), lr=cfg.lr)
+
+        bg = BatchGenerator(vocab=cfg.vocab, dataset=cfg.dataset,
+                            batch_size=cfg.batch_size, ctx_size=cfg.ctx_size,
+                            noise_size=cfg.noise_size, max_size=2,
+                            workers=cfg.workers)
+        bg.start()
+        generator = bg.forward()
+        try:
+            DMM._run_dmm(model=model, generator=generator, optimizer=optimizer,
+                         batch_count=cfg.batch_count, epochs=cfg.epochs)
+        except KeyboardInterrupt:
+            bg.stop()
+
+    def predict(self, cfg: DMMConfig) -> torch.FloatTensor:
+        """
+        Predicts document embeddings for previously unseen documents. 
+
+        Parameters
+        ----------
+        cfg : DMMConfig
+            The configuration to use for the prediction phase 
+        """
+
+        # Disable gradient propagation for word matrices
+        self._W.requires_grad = False
+        self._WP.requires_grad = False
+
+        # Create an optimizer
+        optimizer = SGD(params=self.parameters(), lr=cfg.lr)
+
+        # Create an embedding for each sample in the test set
+        d = torch.randn(len(cfg.dataset), self._D.size()[1])
+
+        # Prepend the embeddings to the document matrix
+        self._D.data = torch.cat((d, self._D))
+
+        # Create a batch generator
+        bg = BatchGenerator(vocab=cfg.vocab, dataset=cfg.dataset,
+                            batch_size=cfg.batch_size, noise_size=cfg.noise_size,
+                            max_size=2, workers=cfg.workers)
+
+        # Start the generator
+        bg.start()
+        generator = bg.forward()
+
+        # Run the model
+        DMM._run_dmm(model=self, generator=generator, optimizer=optimizer,
+                     batch_count=cfg.batch_count, epochs=cfg.epochs)
+
+        # Stop the generator
+        bg.stop()
+
+        # Extract the predicted vectors from the document matrix
+        predictions = self._D[len(cfg.dataset), :].detach().clone()
+
+        # Remove the infered vectors from the document matrix
+        self._D.data = self._D[len(cfg.dataset):, :].data
+
+        # Reenable gradients
+        self._W.requires_grad = True
+        self._WP.requires_grad = True
+
+        return predictions
+
+    def most_similar(self, vectors: torch.FloatTensor,
+                     topn: int = 10) -> Tuple[torch.FloatTensor, torch.IntTensor]:
+        """
+        This method finds the top N most similar document vectors for each vector 
+        in the input. 
+
+        vectors : torch.FloatTensor
+            A [N x M] matrix, where N is the number of documents and M is the 
+            embedding size. These are the input vectors for which the most similar 
+            documents are to be found
+        topn : int 
+            The number of documents to find for each of the input vectors 
+        """
+
+        # Compute the cosine distances between the document matrix
+        # and the target vectors
+        dists = cosine_similarity(self._D, vectors)
+
+        # Extract the top most similar documents from the matrix
+        ms = torch.topk(dists, topn)
+
+        return ms.values, ms.indices
+
 
 class Loss(nn.Module):
     """
-    The negative sampling loss function used to compute the 
-    distance between the document vector to its target word 
-    relative to its distance from a set of noise samples 
+    The negative sampling loss function used to compute the
+    distance between the document vector to its target word
+    relative to its distance from a set of noise samples
 
     Methods
     -------
@@ -152,7 +348,7 @@ class Loss(nn.Module):
         Parameters
         ----------
         scores: torch.FloatTensor
-            The score matrix mapping documents to their similarities to 
+            The score matrix mapping documents to their similarities to
             their current target word and the noise samples.
             The first index in the scores matrix must be the similarity
             between the document vector and its target word.
@@ -171,17 +367,17 @@ class WordSampler:
     """
     A word sampler that assigns probabilities to every word in the vocabulary.
     Overfrequent words are assigned low probabilities to prevent
-    training a model that pushes unique words towards ordinary ones. 
+    training a model that pushes unique words towards ordinary ones.
     Conversely, infrequent words are assigned high sampling probabilities
     to ensure that they obtain meaningful representations in the embedding space.
 
     Attributes
     ----------
-    vocabulary_size : int
+    vocabulary_size: int
         The number of words in the vocabulary
-    sampling_rate : float 
-        The lower the sampling rate, the stricter the sampler enforces 
-        uniqueness. 
+    sampling_rate: float
+        The lower the sampling rate, the stricter the sampler enforces
+        uniqueness.
 
     Methods
     -------
@@ -189,8 +385,8 @@ class WordSampler:
         Computes the sampling distribution for all words in the vocabulary
 
     __contains__(word: str) -> bool
-        Returns true if the sampler determines that the word is unique 
-        enough to be used during training. 
+        Returns true if the sampler determines that the word is unique
+        enough to be used during training.
     """
 
     def __init__(self, sampling_rate: float = 0.001):
@@ -210,22 +406,22 @@ class WordSampler:
 
 class NoiseSampler:
     """
-    The noise sampler randomly samples words from a vocabulary using a 
+    The noise sampler randomly samples words from a vocabulary using a
     power-law distribution that favours infrequent words.
 
     The sampler allows us to avoid computing the softmax normalizing constant
-    which is an O(n) operation. 
+    which is an O(n) operation.
 
-    With the noise sampler we can replace softmax with a non-linear logicstic 
-    regression that discriminates the observed data from artificially 
+    With the noise sampler we can replace softmax with a non-linear logicstic
+    regression that discriminates the observed data from artificially
     generated noise.
 
     Methods
     -------
     sample()
         Returns a list of noise samples.
-        The noise samples are represented as indices to words in the 
-        vocabulary. 
+        The noise samples are represented as indices to words in the
+        vocabulary.
     """
 
     def __init__(self, size: int):
@@ -247,26 +443,26 @@ class NoiseSampler:
 class _Batch:
     """
     This class represents a batch of training examples.
-    The batch consists of a set of documents, the noise samples to use 
-    for the documents during training, as well as the context words to 
-    aggregate with each document. 
+    The batch consists of a set of documents, the noise samples to use
+    for the documents during training, as well as the context words to
+    aggregate with each document.
 
     Attributes
     ----------
-    ctxs : List[List[int]]
-        A set of context words for each document in the batch 
-        The outer list represents a mapping between docs and their context 
-        words. 
-        In other words, the invariant len(ctxs) = len(docs) always holds. 
+    ctxs: List[List[int]]
+        A set of context words for each document in the batch
+        The outer list represents a mapping between docs and their context
+        words.
+        In other words, the invariant len(ctxs) = len(docs) always holds.
 
-    docs : List[int]
+    docs: List[int]
         A set of documents that are a part of the batch
 
-    y : List[List[int]]
+    y: List[List[int]]
         The noise samples and the target word for each document in the batch
-        The outer list represents a mapping between docs, the target word 
+        The outer list represents a mapping between docs, the target word
         for each doc, and the noise samples for each word.
-        Similarly to ctxs, the invariant len(y) = len(docs) always holds. 
+        Similarly to ctxs, the invariant len(y) = len(docs) always holds.
 
     Methods
     -------
@@ -301,12 +497,14 @@ class _Batch:
 
 
 """
-A function pointer that, given a document (a list of tokens), counts 
-the number of words that are still to be processed relative to the 
-index of the current center word. 
 
-The current center word need not be specified. If it is not, then 
-all the examples returned equal the length of the list minus total 
+
+A function pointer that, given a document(a list of tokens), counts
+the number of words that are still to be processed relative to the
+index of the current center word.
+
+The current center word need not be specified. If it is not, then
+all the examples returned equal the length of the list minus total
 the context size.
 """
 ExampleCounter = Callable[[List[Token], Optional[int]], int]
@@ -314,21 +512,21 @@ ExampleCounter = Callable[[List[Token], Optional[int]], int]
 
 class _BatchState:
     """
-    This class represents the state of a batch while it gets constructed 
-    from a vocabulary and dataset. 
+    This class represents the state of a batch while it gets constructed
+    from a vocabulary and dataset.
 
     The batch state consists of the current document being processed,
     the current word in the document being processed and a context size
-    to offset words. 
+    to offset words.
 
     Methods
     -------
     forward(dataset: Dataset, batch_size: int, e: ExampleCounter) -> Tuple[int, int]
         Returns the current document and word being processed and advances
-        the batch state to the next word/document. 
+        the batch state to the next word/document.
 
-        The example counter is used to delimit words and documents. 
-        The batch size defines the number of documents to put in a single batch. 
+        The example counter is used to delimit words and documents.
+        The batch size defines the number of documents to put in a single batch.
         The dataset holds the documents to use while constructing the batch
     """
 
@@ -341,17 +539,17 @@ class _BatchState:
     def forward(self, dataset: Dataset, batch_size: int,
                 e: ExampleCounter) -> Tuple[int, int]:
         """
-        This function is thread-safe. 
+        This function is thread-safe.
 
         Parameters
         ----------
-        dataset : Dataset
+        dataset: Dataset
             The set of documents to construct the batch from
-        batch_size : int 
+        batch_size: int
             The number of documents to put in a single batch
-        e : ExampleCounter
+        e: ExampleCounter
             Counts the number of examples in a document and uses it
-            to delimit words and documents in the batch 
+            to delimit words and documents in the batch
         """
 
         with self._mutex:
@@ -361,17 +559,17 @@ class _BatchState:
 
     def _forward(self, dataset: Dataset, batch_size: int, e: ExampleCounter):
         """
-        This function is NOT thread-safe. 
+        This function is NOT thread-safe.
 
         Parameters
         ----------
-        dataset : Dataset
+        dataset: Dataset
             The set of documents to construct the batch from
-        batch_size : int 
+        batch_size: int
             The number of documents to put in a single batch
-        e : ExampleCounter
+        e: ExampleCounter
             Counts the number of examples in a document and uses it
-            to delimit words and documents in the batch 
+            to delimit words and documents in the batch
         """
 
         ex_count = e(dataset[self._doc_index.value], self._word_index.value)
@@ -424,39 +622,39 @@ class _BatchState:
 
 class _BatchGenerator:
     """
-    A synchronous batch generator that yields batches of inputs to train 
+    A synchronous batch generator that yields batches of inputs to train
     a Doc2Vec model.
 
     Attributes
     ----------
-    vocab : Vocabulary 
-        The vocabulary to sample words from. 
-    dataset : Dataset 
+    vocab: Vocabulary
+        The vocabulary to sample words from.
+    dataset: Dataset
         The dataset of documents to yield batches from
-    batch_size : int 
-        The number of samples to put in a single batch 
-    ctx_size: int 
-        The relative context size of a center word. 
-        The size is relative because it only denotes the number of context 
+    batch_size: int
+        The number of samples to put in a single batch
+    ctx_size: int
+        The relative context size of a center word.
+        The size is relative because it only denotes the number of context
         words on ONE side of a center word.
         Therefore, total context size is actually 2*ctx_size
-    noise_size : int
+    noise_size: int
         The number of noise words to create per sample in the batch
-    sampling_rate : float 
-        The lower the sampling rate, the stricter the sampler enforces 
-        uniqueness. 
+    sampling_rate: float
+        The lower the sampling rate, the stricter the sampler enforces
+        uniqueness.
 
     Methods
     -------
     forward() -> _Batch:
-        Populates a batch and returns it to the caller 
+        Populates a batch and returns it to the caller
 
     example_counter(doc: List[Token], word_index=None)
         Counts the number of examples in the document relative to the word index
 
     _fill_batch(batch: _Batch, doc_index: int, word_index: int)
         Inserts a single element into the batch.
-        The element is defined by the current document being processed 
+        The element is defined by the current document being processed
         and the index of the current center word being processed.
 
     __len__() -> int:
@@ -498,7 +696,7 @@ class _BatchGenerator:
             remaining = len(self.dataset[doc_index]) - 1 - self.ctx_size
             if word_index <= remaining:
                 # Extract the index of the current word in the vocabulary
-                vi = self.vocab[self.dataset[doc_index][word_index].lemma]
+                vi = self.vocab[self.dataset[doc_index][word_index].data]
 
                 if self.vocab.itos(vi) in self.word_sampler:
                     # The word sampler has determined that the
@@ -539,7 +737,7 @@ class _BatchGenerator:
         doc = self.dataset[doc_index]
 
         # Add the target word to the noise as the first index
-        noise.insert(0, self.vocab[doc[word_index].lemma])
+        noise.insert(0, self.vocab[doc[word_index].data])
         # Add the noise and target word to the batch
         batch.y.append(noise)
 
@@ -552,7 +750,7 @@ class _BatchGenerator:
                        range(-self.ctx_size, self.ctx_size+1)
                        if diff != 0)
         for i in ctx_indexes:
-            index = self.vocab[doc[i].lemma]
+            index = self.vocab[doc[i].data]
             ctx.append(index)
         batch.ctxs.append(ctx)
 
@@ -564,29 +762,28 @@ class _BatchGenerator:
 class BatchGenerator:
     """
     A concurrent batch generator that constructs document batches to feed
-    in a Doc2Vec model. 
-
+    in a Doc2Vec model.
 
     Attributes
     ----------
-    vocab : Vocabulary 
-        The vocabulary to sample words from. 
-    dataset : Dataset 
+    vocab: Vocabulary
+        The vocabulary to sample words from.
+    dataset: Dataset
         The dataset of documents to yield batches from
-    batch_size : int 
-        The number of samples to put in a single batch 
-    ctx_size: int 
-        The relative context size of a center word. 
-        The size is relative because it only denotes the number of context 
+    batch_size: int
+        The number of samples to put in a single batch
+    ctx_size: int
+        The relative context size of a center word.
+        The size is relative because it only denotes the number of context
         words on ONE side of a center word.
         Therefore, total context size is actually 2*ctx_size
-    noise_size : int
+    noise_size: int
         The number of noise words to create per sample in the batch
-    workers : int
-        The number of processes to use for batch generation 
-    sampling_rate : float 
-        The lower the sampling rate, the stricter the sampler enforces 
-        uniqueness. 
+    workers: int
+        The number of processes to use for batch generation
+    sampling_rate: float
+        The lower the sampling rate, the stricter the sampler enforces
+        uniqueness.
 
     Methods
     -------
@@ -594,7 +791,7 @@ class BatchGenerator:
         Spawns all workers that create batches
 
     stop()
-        Stops all workers 
+        Stops all workers
 
     forward()
         Returns a batch when ready
@@ -665,73 +862,3 @@ class BatchGenerator:
     def forward(self):
         while self.is_running():
             yield self._queue.get()
-
-
-def train_dmm(vocab: Vocabulary, dataset: Dataset, embedding_size: int,
-              epochs: int, lr: float, batch_count: int, batch_size: int,
-              ctx_size: int, noise_size: int, workers: int):
-    """
-    Trains a Distributed Memory Model of Paragraph Vectors.
-
-    Parameters
-    ----------
-    vocab : Vocabulary
-        The vocabulary of words 
-    dataset : Dataset
-        The dataset to train the model on
-    embedding_size : int 
-        The size of a document/word embedding 
-    epochs : int 
-        The number of epochs to train the model for 
-    lr : float 
-        The learning rate used during training 
-    batch_count : int 
-        The number of batches to use for each epoch 
-    batch_size : int 
-        The number of samples in a batch 
-    ctx_size : int 
-        The relative context size of a center word. 
-        The size is relative because it only denotes the number of context 
-        words on ONE side of a center word.
-        Therefore, total context size is actually 2*ctx_size
-    noise_size : int 
-        The number of noise samples to draw when computing the loss
-    workers : int 
-        The number of processes to use for batch generation
-    """
-
-    model = DMM(document_count=len(dataset), vocabulary_size=len(
-        vocab), embedding_size=embedding_size)
-    optimizer = SGD(params=model.parameters(), lr=lr)
-    loss_func = Loss()
-
-    if torch.cuda.is_available():
-        model.cuda()
-
-    batch_generator = BatchGenerator(vocab, dataset, batch_size, ctx_size,
-                                     noise_size, 2, workers)
-    batch_generator.start()
-    gen = batch_generator.forward()
-
-    try:
-        for _ in range(0, epochs):
-            loss = []
-
-            for _ in range(batch_count):
-                batch: _Batch = next(gen)
-                if torch.cuda.is_available():
-                    batch.cudify()
-
-                x = model.forward(batch.ctxs, batch.docs, batch.y)
-
-                J = loss_func.forward(x)
-
-                loss.append(J.item())
-                model.zero_grad()
-                J.backward()
-                optimizer.step()
-
-            loss = torch.mean(torch.FloatTensor(loss))
-            print('\nLoss', loss)
-    except KeyboardInterrupt:
-        batch_generator.stop()
