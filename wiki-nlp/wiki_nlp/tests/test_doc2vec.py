@@ -67,21 +67,21 @@ class BatchGeneratorTest(unittest.TestCase):
 
     def setUp(self):
         self.dataset = [[
-            Token("bei", "bei", "a"),
-            Token("der", "der", "a"),
-            Token("informatik", "informatik", "a"),
-            Token("handelt", "handelt", "a"),
-            Token("es", "es", "a"),
-            Token("sich", "sich", "a"),
-            Token("um", "um", "a"),
-            Token("die", "die", "a"),
-            Token("systematischen", "systematischen", "a"),
-            Token("darstellung", "darstellung", "a"),
-            Token("von", "von", "a"),
-            Token("informationen", "informationen", "a"),
+            Token("bei", "a"),
+            Token("der", "a"),
+            Token("informatik",  "a"),
+            Token("handelt",  "a"),
+            Token("es", "a"),
+            Token("sich",  "a"),
+            Token("um",  "a"),
+            Token("die", "a"),
+            Token("systematischen",  "a"),
+            Token("darstellung",  "a"),
+            Token("von", "a"),
+            Token("informationen", "a"),
         ]]
         self.vocab = Vocabulary()
-        self.vocab.build(self.dataset[0], use_lemmas=True, min_freq=1)
+        self.vocab.build(self.dataset[0], min_freq=1)
 
     def test_batch_generate(self):
         bs = doc2vec.BatchGenerator(
