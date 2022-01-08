@@ -780,6 +780,18 @@ class _BatchGenerator:
         return batch
 
     def example_counter(self, doc: List[Token], word_index=None):
+        """
+        Counts the number of unprocessed context words remaining in the 
+        document relative to the center word index.
+
+        Parameters
+        ----------
+        doc : List[Token]
+            The document
+        word_index : Optional[int]
+            The center word index 
+        """
+
         if word_index is not None:
             if len(doc) - word_index >= self.ctx_size + 1:
                 return len(doc) - word_index - self.ctx_size
