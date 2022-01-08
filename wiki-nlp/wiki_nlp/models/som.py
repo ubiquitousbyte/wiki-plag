@@ -7,8 +7,6 @@ import torch.nn as nn
 import numpy as np
 from numpy.random import default_rng
 
-from time import sleep
-
 
 class Decay(nn.Module):
     """
