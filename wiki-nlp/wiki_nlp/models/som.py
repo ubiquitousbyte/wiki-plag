@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Dict, Tuple
 import math
 
 import torch
@@ -247,7 +247,7 @@ class SOM(nn.Module):
         loss = QuantizationLoss()
         return loss.forward(x, self._W)
 
-    def fit(self, x: torch.FloatTensor, epochs: int = 500):
+    def fit(self, x: torch.FloatTensor, epochs: int = 500) -> Dict[int, Tuple[int, int]]:
         """
         Trains a SOM on the data matrix
 
@@ -270,15 +270,20 @@ class SOM(nn.Module):
         # Shuffle the indices
         iterations = iterations[torch.randperm(iterations.size(dim=0))]
 
+        som = {}
+
         # Initiate training procedure
         for time_step, iteration in enumerate(iterations):
             # Forward pass
             h = self.forward(x[iteration], time_step)
             # Backward pass
             self.backward(x[iteration], h, time_step)
+            som[iteration.item()] = self.winner(x[iteration])
 
         # Print quantization error
         print("\nQuantization error: ", self.quantization_error(x))
+
+        return som
 
 
 if __name__ == '__main__':
@@ -286,4 +291,5 @@ if __name__ == '__main__':
 
     x = torch.randn(100, 10)
     x /= torch.linalg.norm(x, ord=2, dim=-1, keepdim=True)
-    som.fit(x)
+    m = som.fit(x)
+    print(m)
