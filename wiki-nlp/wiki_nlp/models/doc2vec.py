@@ -1,3 +1,4 @@
+from re import A
 from typing import (
     Any,
     Generator,
@@ -34,65 +35,20 @@ from wiki_nlp.text import Token
 
 
 @dataclasses.dataclass
-class DMMConfig:
-    """
-    Configuration class for training and predicting document vectors 
-    via the Distributed Memory Model  
-
-    Attributes
-    ----------
-    vocab : Vocabulary
-        The vocabulary of words
-    dataset : Dataset
-        The dataset to train the model on
-    embedding_size : int
-        The size of a document/word embedding
-    epochs : int
-        The number of epochs to train the model for
-    lr : float
-        The learning rate used during training
-    batch_count : int
-        The number of batches to use for each epoch
-    batch_size : int
-        The number of samples in a batch
-    ctx_size : int
-        The relative context size of a center word.
-        The size is relative because it only denotes the number of context
-        words on ONE side of a center word.
-        Therefore, total context size is actually 2*ctx_size
-    noise_size : int
-        The number of noise samples to draw when computing the loss
-    workers : int
-        The number of processes to use for batch generation
-    """
-
-    vocab: Vocabulary
-    dataset: Dataset
-    embedding_size: int
-    epochs: int
-    lr: float
-    batch_count: int
-    batch_size: int
-    ctx_size: int
-    noise_size: int
-    workers: int
-
-
-@dataclasses.dataclass
 class DMMState:
     """
-    Model state class returned by a training procedure 
+    Model state class returned by a training procedure
 
     Attributes
     ----------
     epoch : int
-        The current epoch 
-    loss : float 
+        The current epoch
+    loss : float
         The loss value computed for the current epoch
     model_state : OrderedDict[str, Tensor]
         A dictionary holding the model parameters
     optimizer_state : OrderedDict[str, Tensor]
-        A dictionary holding the optimizer parameters 
+        A dictionary holding the optimizer parameters
     """
 
     epoch: int
@@ -102,73 +58,39 @@ class DMMState:
 
 
 class DMM(nn.Module):
-    """
-    A class used to represent an implementation of the
-    Distributed Memory Model of Paragraph Vectors proposed by
-    Mikholov et. al. in Distributed Representations of Sentences and Documents.
 
-    The original paper can be found at https: // arxiv.org/abs/1405.4053
-
-    Attributes
-    ----------
-    document_count: int
-        The number of documents used for training the model.
-        This parameter is used to construct the document matrix.
-    vocabulary_size: int
-        The size of the vocabulary. This parameter is used to construct
-        the input word matrix.
-    embedding_size: int
-        The size of the embedding space.
-
-    Methods
-    -------
-    forward(ctxs: torch.FloatTensor, docs: torch.FloatTensor, y: torch.FloatTensor)
-        Computes the forward step of the model
-
-    train(cfg: DMMConfig) -> Tuple[DMM, DMMState]
-        Trains the model given the model configuration and returns it to the caller
-
-    predict(cfg: DMMConfig) -> torch.FloatTensor
-        Runs the inference stage on the dataset specified in the model configuration
-        and returns a matrix holding the predicted document vectors for each
-        document in the dataset. 
-
-    most_similar(vectors: torch.FloatTensor, topn: int) -> Tuple[torch.FloatTensor, torch.IntTensor]
-        Extracts the most similar documents to the input vectors from the 
-        document matrix and returns their values and their indices to the caller 
-    """
-
-    def __init__(self, document_count: int, vocabulary_size: int, embedding_size: int):
+    def __init__(self, vocab: Vocabulary, n_docs: int, dim: int = 100):
         """
         Parameters
         ----------
-        document_count: int
+        vocab : Vocabulary 
+            The vocabulary of words that are recognized by the model 
+        n_docs: int
             The number of documents used for training the model.
             This parameter is used to construct the document matrix.
-        vocabulary_size: int
-            The size of the vocabulary. This parameter is used to construct
-            the input word matrix.
-        embedding_size: int
+        dim: int
             The size of the embedding space.
         """
 
         super(DMM, self).__init__()
+        self.vocab = vocab
+        n_words = len(self.vocab)
+
         self._D = nn.Parameter(
-            torch.randn(document_count, embedding_size), requires_grad=True
+            torch.randn(n_docs, dim), requires_grad=True
         )
         self._W = nn.Parameter(
-            torch.cat((torch.randn(vocabulary_size, embedding_size),
-                      torch.zeros(1, embedding_size))),
+            torch.cat((torch.randn(n_words, dim),
+                      torch.zeros(1, dim))),
             requires_grad=True
         )
         self._WP = nn.Parameter(
-            torch.cat((torch.randn(embedding_size, vocabulary_size),
-                      torch.zeros(embedding_size, 1)), dim=1).zero_(),
+            torch.cat((torch.randn(dim, n_words),
+                      torch.zeros(dim, 1)), dim=1).zero_(),
             requires_grad=True
         )
 
-    def forward(self, ctxs: torch.FloatTensor, docs: torch.FloatTensor,
-                y: torch.FloatTensor):
+    def forward(self, ctxs: torch.FloatTensor, docs: torch.FloatTensor, y: torch.FloatTensor):
         """
         Parameters
         ----------
@@ -219,6 +141,177 @@ class DMM(nn.Module):
         h = torch.add(self._D[docs, :], torch.sum(self._W[ctxs, :], dim=1))
         return torch.bmm(h.unsqueeze(1), self._WP[:, y].permute(1, 0, 2)).squeeze()
 
+    def fit(self, data: Dataset, batch_size: int = 32, ctx_size: int = 3,
+            noise_size: int = 10, learning_rate: float = 0.01,
+            epochs: int = 50) -> DMMState:
+        """
+        Fits the model onto the dataset and returns a state object 
+        that can be persisted to the filesystem and used later for 
+        further training. The state object can also be used for inference
+
+        Parameters
+        ----------
+        data : Dataset
+            The dataset to fit the model on
+        batch_size : int 
+            The size of a batch to use during training
+        ctx_size : int
+            The relative context size of a center word.
+            The size is relative because it only denotes the number of context
+            words on ONE side of a center word.
+            Therefore, total context size is actually 2*ctx_size
+        noise_size : int 
+            The number of noise samples to draw when computing the loss 
+        learning_rate : float 
+            THe learning rate to use during training 
+        epochs : int 
+            The number of epochs to train the model for 
+        """
+
+        # Run the model on the GPU if the host has CUDA support
+        if torch.cuda.is_available():
+            self.cuda()
+
+        # Create a batch generator for the input data
+        generator = BatchGenerator(self.vocab, data, batch_size,
+                                   ctx_size, noise_size)
+        batch_count = len(generator)
+
+        # Instantiate the negative sampling loss
+        loss_func = Loss()
+        # Create an SGD optimizer for backpropagation
+        optimizer = SGD(params=self.parameters(), lr=learning_rate)
+
+        # Create the model state
+        state = DMMState(epoch=0, loss=float("inf"),
+                         model_state=None, optimizer_state=None)
+
+        # Start the generator
+        generator.start()
+        iterator = generator.forward()
+
+        for epoch in range(epochs):
+            loss = []
+
+            for _ in range(batch_count):
+                # Sample a batch from the generator
+                batch: _Batch = next(iterator)
+                # Run all batch computations on the GPU if the host has CUDA support
+                if torch.cuda.is_available():
+                    batch.cudify()
+
+                # Forward pass
+                x = self.forward(batch.ctxs, batch.docs, batch.y)
+                J = loss_func.forward(x)
+
+                # Cache the batch loss
+                loss.append(J.item())
+
+                # Backward pass
+                self.zero_grad()
+                J.backward()
+                optimizer.step()
+
+            DMM._print_progress(batch_count-1, epoch, batch_count)
+
+            # Compute the average loss for the epoch and print it
+            loss = torch.mean(torch.FloatTensor(loss))
+            print("\nLoss", loss)
+
+            # If this was the best epoch, cache it in the state
+            is_best_loss = loss < state.loss
+            if is_best_loss:
+                state.epoch = epoch + 1
+                state.loss = loss.item()
+                state.model_state = self.state_dict()
+                state.optimizer_state = optimizer.state_dict()
+
+        # Stop the generator
+        generator.stop()
+
+        # Return the best model state
+        return state
+
+    def predict(self, state: DMMState, data: Dataset, batch_size: int = 32,
+                ctx_size: int = 3, noise_size: int = 10,
+                learning_rate: float = 0.01, epochs: int = 50):
+        """
+        Predicts document vectors for previously unseen documents and 
+        returns them to the caller. 
+
+        The unseen documents are added to the document matrix and 
+        gradient descent is applied while keeping _W and _WP fixed. 
+
+        Parameters
+        ----------
+        state : DMMState
+            The state object returned by the fit function that holds the 
+            model parameters of a training procedure
+        data : Dataset
+            The previously unseen documents to predict vectors for
+        batch_size : int 
+            The size of a batch to use during training
+        ctx_size : int
+            The relative context size of a center word.
+            The size is relative because it only denotes the number of context
+            words on ONE side of a center word.
+            Therefore, total context size is actually 2*ctx_size
+        noise_size : int 
+            The number of noise samples to draw when computing the loss 
+        learning_rate : float 
+            THe learning rate to use during training 
+        epochs : int 
+            The number of epochs to train the model for 
+        """
+
+        # Create a predictor model and load the training state into it
+        predictor = DMM(self.vocab, self._D.size()[0], self._W.size()[1])
+        predictor.load_state_dict(state.model_state)
+
+        # Create a document matrix for the unseen documents
+        d = torch.randn(len(data), self._W.size()[1])
+
+        # Insert the document matrix for the unseen documents into the model
+        # We disable gradient derivation here, because the concatenation
+        # procedure should not be handled during backpropagation
+        with torch.no_grad():
+            predictor._D.data = torch.cat((d, predictor._D.data))
+
+        # We disable backpropagation for the input and output word matrices
+        # The inference stage should only update the document matrix
+        predictor._W.requires_grad = False
+        predictor._WP.requires_grad = False
+
+        # Run gradient descend on the model
+        _ = predictor.fit(data, batch_size, ctx_size,
+                          noise_size, learning_rate, epochs)
+
+        # Return the predicted vectors
+        return predictor._D[:len(data), :].detach().clone()
+
+    def most_similar(self, documents: torch.FloatTensor, topn: int = 10):
+        """
+        Given a batch of document vectors, this function finds the 
+        most similar vectors in the model's document matrix and returns 
+        the distances and indices to the caller
+
+        Parameters
+        ----------
+        documents : torch.FloatTensor
+            The documents for which the most similar documents are to be found
+        topn : int 
+            The number of documents to extract
+        """
+
+        # Compute the cosine distances between the document matrix
+        # and the target vectors
+        dists = cosine_similarity(self._D, documents)
+
+        # Extract the top most similar documents from the matrix
+        ms = torch.topk(dists, topn)
+
+        return ms.values, ms.indices
+
     @staticmethod
     def _print_progress(batch: int, epoch: int, batch_count: int):
         """
@@ -238,176 +331,6 @@ class DMM(nn.Module):
         print("\rEpoch {:d}".format(epoch + 1), end='')
         stdout.write(" - {:d}%".format(step_progress))
         stdout.flush()
-
-    @staticmethod
-    def _run_dmm(model: 'DMM', generator: Generator, optimizer: SGD,
-                 batch_count: int, epochs: int) -> DMMState:
-        """
-        Runs a loaded distributed memory model 
-
-        Parameters
-        ----------
-        model : DMM
-            The model to run 
-        generator : Generator 
-            A generator that yields batches 
-        optimizer : SGD
-            The stochastic gradient descent optimizer to use 
-        batch_count : int 
-            The number of batches to use on each epoch
-        epochs : int 
-            The number of epochs to run the model for 
-        """
-
-        state = DMMState(epoch=0, loss=float("inf"),
-                         model_state=None, optimizer_state=None)
-
-        loss_func = Loss()
-
-        if torch.cuda.is_available():
-            model.cuda()
-
-        for epoch_index in range(0, epochs):
-            loss = []
-            for batch_index in range(batch_count):
-                batch: _Batch = next(generator)
-
-                if torch.cuda.is_available():
-                    batch.cudify()
-
-                # Forward pass
-                x = model.forward(batch.ctxs, batch.docs, batch.y)
-                J = loss_func.forward(x)
-
-                loss.append(J.item())
-
-                # Backward pass
-                model.zero_grad()
-                J.backward()
-                optimizer.step()
-                DMM._print_progress(batch_index, epoch_index, batch_count)
-
-            loss = torch.mean(torch.FloatTensor(loss))
-            print("\nLoss", loss)
-
-            is_best_loss = loss < state.loss
-            if is_best_loss:
-                state.epoch = epoch_index + 1
-                state.loss = loss.item()
-                state.model_state = model.state_dict()
-                state.optimizer_state = optimizer.state_dict()
-
-        return state
-
-    @staticmethod
-    def train(cfg: DMMConfig, state_path: str = None) -> 'DMM':
-        """
-        Train a distributed memory model of paragraph vectors.
-        This function returns the trained model. 
-
-        Parameters
-        ----------
-        cfg: DMMConfig 
-            The configuration to use 
-        state_path : str 
-            The path to save the model's state to
-        """
-
-        model = DMM(document_count=len(cfg.dataset), vocabulary_size=len(cfg.vocab),
-                    embedding_size=cfg.embedding_size)
-        optimizer = SGD(params=model.parameters(), lr=cfg.lr)
-
-        bg = BatchGenerator(vocab=cfg.vocab, dataset=cfg.dataset,
-                            batch_size=cfg.batch_size, ctx_size=cfg.ctx_size,
-                            noise_size=cfg.noise_size, max_size=2,
-                            workers=cfg.workers)
-        bg.start()
-        generator = bg.forward()
-
-        state = DMM._run_dmm(model=model, generator=generator, optimizer=optimizer,
-                             batch_count=cfg.batch_count, epochs=cfg.epochs)
-
-        bg.stop()
-
-        if state_path is not None:
-            state = dataclasses.asdict(state)
-            torch.save(state, state_path)
-
-        return model, state
-
-    def predict(self, cfg: DMMConfig) -> torch.FloatTensor:
-        """
-        Predicts document embeddings for previously unseen documents. 
-
-        Parameters
-        ----------
-        cfg : DMMConfig
-            The configuration to use for the prediction phase 
-        """
-
-        # Disable gradient propagation for word matrices
-        self._W.requires_grad = False
-        self._WP.requires_grad = False
-
-        # Create an optimizer
-        optimizer = SGD(params=self.parameters(), lr=cfg.lr)
-
-        # Create an embedding for each sample in the test set
-        d = torch.randn(len(cfg.dataset), self._D.size()[1])
-
-        # Prepend the embeddings to the document matrix
-        self._D.data = torch.cat((d, self._D))
-
-        # Create a batch generator
-        bg = BatchGenerator(vocab=cfg.vocab, dataset=cfg.dataset,
-                            batch_size=cfg.batch_size, noise_size=cfg.noise_size,
-                            max_size=2, workers=cfg.workers)
-
-        # Start the generator
-        bg.start()
-        generator = bg.forward()
-
-        # Run the model
-        DMM._run_dmm(model=self, generator=generator, optimizer=optimizer,
-                     batch_count=cfg.batch_count, epochs=cfg.epochs)
-
-        # Stop the generator
-        bg.stop()
-
-        # Extract the predicted vectors from the document matrix
-        predictions = self._D[len(cfg.dataset), :].detach().clone()
-
-        # Remove the infered vectors from the document matrix
-        self._D.data = self._D[len(cfg.dataset):, :].data
-
-        # Reenable gradients
-        self._W.requires_grad = True
-        self._WP.requires_grad = True
-
-        return predictions
-
-    def most_similar(self, vectors: torch.FloatTensor,
-                     topn: int = 10) -> Tuple[torch.FloatTensor, torch.IntTensor]:
-        """
-        This method finds the top N most similar document vectors for each vector 
-        in the input. 
-
-        vectors : torch.FloatTensor
-            A [N x M] matrix, where N is the number of documents and M is the 
-            embedding size. These are the input vectors for which the most similar 
-            documents are to be found
-        topn : int 
-            The number of documents to find for each of the input vectors 
-        """
-
-        # Compute the cosine distances between the document matrix
-        # and the target vectors
-        dists = cosine_similarity(self._D, vectors)
-
-        # Extract the top most similar documents from the matrix
-        ms = torch.topk(dists, topn)
-
-        return ms.values, ms.indices
 
 
 class Loss(nn.Module):
@@ -943,7 +866,7 @@ class BatchGenerator:
 
     def __init__(self, vocab: Vocabulary, dataset: Dataset,
                  batch_size: int, ctx_size: int, noise_size: int,
-                 max_size: int = 1, workers: int = 1, sampling_rate: float = 0.01):
+                 max_size: int = 2, workers: int = 2, sampling_rate: float = 0.01):
         """
         Parameters
         ----------
