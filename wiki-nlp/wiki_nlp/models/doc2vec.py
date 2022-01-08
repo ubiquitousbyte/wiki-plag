@@ -265,11 +265,11 @@ class DMM(nn.Module):
         """
 
         # Create a predictor model and load the training state into it
-        predictor = DMM(self.vocab, self._D.size()[0], self._W.size()[1])
+        predictor = DMM(self.vocab, self._D.size(dim=0), self._W.size(dim=1))
         predictor.load_state_dict(state.model_state)
 
         # Create a document matrix for the unseen documents
-        d = torch.randn(len(data), self._W.size()[1])
+        d = torch.randn(len(data), self._W.size(dim=1))
 
         # Insert the document matrix for the unseen documents into the model
         # We disable gradient derivation here, because the concatenation
@@ -362,8 +362,8 @@ class Loss(nn.Module):
             vector and the negative samples.
         """
 
-        n = scores.size()[0]
-        k = scores.size()[1] - 1
+        n = scores.size(dim=0)
+        k = scores.size(dim=1) - 1
         return -torch.sum(
             self._loss(scores[:, 0]) +
             torch.sum(self._loss(-scores[:, 1:])) / k) / n

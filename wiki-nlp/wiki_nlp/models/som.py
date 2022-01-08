@@ -1,10 +1,13 @@
-import math
 from typing import Tuple
+import math
 
 import torch
 import torch.nn as nn
 
 import numpy as np
+from numpy.random import default_rng
+
+from time import sleep
 
 
 class Decay(nn.Module):
@@ -15,7 +18,8 @@ class Decay(nn.Module):
     This is known as an exponential decay function. 
 
     This decay function is necessary for stochastic approximation, i.e 
-    for artificially decreasing the learning rate of a model. 
+    for artificially decreasing the learning rate of a model that does not 
+    use gradient descent.
 
     Methods
     -------
@@ -99,10 +103,40 @@ class Neighbourhood(nn.Module):
         return (hx*hy).T
 
 
+class QuantizationLoss(nn.Module):
+    """
+    Loss metric for a SOM. 
+
+    This loss sums the distances between the neurons of a SOM and a set of 
+    input data points. 
+
+    A large value indicates that the mapping between the input space 
+    and the output space is disproportionate 
+
+    """
+
+    def __init__(self):
+        super(QuantizationLoss, self).__init__()
+
+    def _weight_dist(self, x: torch.FloatTensor, w: torch.FloatTensor):
+        wf = w.reshape(-1, w.size(dim=2))
+        xsq = torch.sum(torch.pow(x, 2), dim=1, keepdim=True)
+        wfsq = torch.sum(torch.pow(wf, 2), dim=1, keepdim=True)
+        ct = torch.matmul(x, wf.T)
+        return torch.sqrt(-2 * ct + xsq + wfsq.T)
+
+    def _quantize(self, x, w):
+        winners = torch.argmin(self._weight_dist(x, w), dim=1)
+        return w[np.unravel_index(winners, w.size()[:2])]
+
+    def forward(self, x, w):
+        return torch.mean(torch.norm(x-self._quantize(x, w), dim=1))
+
+
 class SOM(nn.Module):
 
     def __init__(self, grid: Tuple[int, int, int],
-                 sigma: float = 1.0, learning_rate: float = 0.1):
+                 sigma: float = 0.8, learning_rate: float = 0.1):
         """
         Parameters
         ----------
@@ -120,11 +154,14 @@ class SOM(nn.Module):
         super(SOM, self).__init__()
 
         x, y, z = grid
-        gx, gy = torch.meshgrid(torch.arange(x), torch.arange(y))
+        gx, gy = torch.meshgrid(torch.arange(
+            x), torch.arange(y), indexing='xy')
 
         self._gx = nn.Parameter(gx, requires_grad=False)
         self._gy = nn.Parameter(gy, requires_grad=False)
+
         self._W = nn.Parameter(torch.randn(x, y, z), requires_grad=False)
+        self._W /= torch.linalg.norm(self._W, ord=2, dim=-1, keepdim=True)
 
         # Assume an initial learning rate of 0.1
         # If we use an initial time constant of 1000,
@@ -133,7 +170,10 @@ class SOM(nn.Module):
         # A time constant equal to 1000 ensres that the learning rate
         # will always remain above 0.01.
         self._lr_decay = Decay(learning_rate, 1000)
-        self._neigh = Neighbourhood(sigma, 1000/torch.log(sigma))
+
+        self._neigh = Neighbourhood(sigma, 1000/math.log(sigma))
+
+        self._rng = default_rng()
 
     def winner(self, x):
         """
@@ -198,14 +238,54 @@ class SOM(nn.Module):
             The current time step
         """
 
+        # Compute the current value of the learning rate w.r.t the current time
         alpha = self._lr_decay.forward(t)
+        # Truncate the probabilities by the current learning rate.
         f = alpha*h
+        # Update the neurons
         self._W += torch.einsum('ij,ijk->ijk', f, x - self._W)
+
+    def quantization_error(self, x: torch.FloatTensor):
+        loss = QuantizationLoss()
+        return loss.forward(x, self._W)
+
+    def fit(self, x: torch.FloatTensor, epochs: int = 500):
+        """
+        Trains a SOM on the data matrix
+
+        Parameters
+        ----------
+        x : torch.FloatTensor
+            The data matrix to train the algorithm on
+        """
+
+        # Create index sequence
+        # If the number of samples in x is 100, this yiels a
+        # tensor of indices [0...99]
+        indices = torch.arange(x.size(dim=0))
+
+        # Repeat the indices by the number of epochs
+        # Following the example above, if epochs is 10, this
+        # yields a tensor holding 10 repetitions of [0..99]
+        iterations = indices.repeat(epochs)
+
+        # Shuffle the indices
+        iterations = iterations[torch.randperm(iterations.size(dim=0))]
+
+        # Initiate training procedure
+        for time_step, iteration in enumerate(iterations):
+            # Forward pass
+            h = self.forward(x[iteration], time_step)
+            # Backward pass
+            self.backward(x[iteration], h, time_step)
+
+        # Print quantization error
+        print("\nQuantization error: ", self.quantization_error(x))
 
 
 if __name__ == '__main__':
     som = SOM((5, 5, 10))
 
-    x = torch.randn(1, 10)
-    h = som.forward(x, 1)
-    som.backward(x, h, 1)
+    x = torch.randn(100, 10)
+    x /= torch.linalg.norm(x, ord=2, dim=-1, keepdim=True)
+    som.fit(x)
