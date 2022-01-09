@@ -2,7 +2,6 @@ from typing import (
     Iterable,
     Iterator,
     OrderedDict,
-    Tuple,
     List,
     Counter
 )
@@ -116,7 +115,7 @@ class Dataset(dataset.Dataset):
             The documents to construct the dataset from 
 
         use_lemmas : bool
-            Set to true if the dataset should be constructed from the lemmatized
+            Set to True if the dataset should be constructed from the lemmatized
             versions of each token found in a document
         """
 
@@ -133,3 +132,14 @@ class Dataset(dataset.Dataset):
 
     def __len__(self):
         return len(self._dataset)
+
+    def __iter__(self):
+        self.count = -1
+        return self
+
+    def __next__(self):
+        self.count += 1
+        try:
+            return self[self.count]
+        except IndexError:
+            return
