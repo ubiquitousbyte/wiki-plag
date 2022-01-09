@@ -1,13 +1,9 @@
 from dataclasses import dataclass
-from typing import (
-    Iterable,
-    Iterator
-)
+from typing import Iterator
 import re
 
 import spacy
 
-from spacy.tokens.doc import Doc
 
 PAT_ALPHABETIC = re.compile('(((?![\d])\w)+)', re.UNICODE)
 
