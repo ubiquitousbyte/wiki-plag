@@ -2,9 +2,9 @@ import unittest
 
 import torch
 
-from wiki_nlp.models import doc2vec
-from wiki_nlp.dataset import Vocabulary
-from wiki_nlp.text import Token
+from dmm import model
+from dmm.dataset import Vocabulary
+from dmm.text import Token
 
 
 class DMMTest(unittest.TestCase):
@@ -19,7 +19,7 @@ class DMMTest(unittest.TestCase):
         self.ctxs = torch.LongTensor([[0, 2, 5, 6], [3, 4, 1, 6]])
         self.doc_indices = torch.LongTensor([1, 2])
         self.y = torch.LongTensor([[1, 3, 4], [2, 4, 7]])
-        self.model = doc2vec.DMM(
+        self.model = model.DMM(
             self.docs, self.num_words, self.embedding_size)
 
     def test_forward(self):
@@ -28,7 +28,7 @@ class DMMTest(unittest.TestCase):
         self.assertEqual(x.size()[1], self.noise_size + 1)
 
     def test_backward(self):
-        loss = doc2vec.Loss()
+        loss = model.Loss()
         optimizer = torch.optim.SGD(self.model.parameters(), lr=0.001)
         for _ in range(2):
             x = self.model.forward(self.ctxs, self.doc_indices, self.y)
@@ -57,7 +57,7 @@ class DMMTest(unittest.TestCase):
                 self.assertEqual(torch.sum(self.model._WP.grad[:, w].data), 0)
 
     def test_loss(self):
-        loss = doc2vec.Loss()
+        loss = model.Loss()
         scores = torch.FloatTensor([[12.1, 1.3, 3.5], [18.9, 0.1, 3.4]])
         J = loss.forward(scores)
         self.assertTrue(J.item() >= 0)
@@ -84,7 +84,7 @@ class BatchGeneratorTest(unittest.TestCase):
         self.vocab.build(self.dataset[0], min_freq=1)
 
     def test_batch_generate(self):
-        bs = doc2vec.BatchGenerator(
+        bs = model.BatchGenerator(
             vocab=self.vocab,
             dataset=self.dataset,
             batch_size=8,

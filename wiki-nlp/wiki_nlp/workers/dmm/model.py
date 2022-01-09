@@ -26,12 +26,13 @@ from torch.optim import SGD
 import numpy as np
 from numpy.random import default_rng
 
-from wiki_nlp.dataset import (
+from dmm.dataset import (
     Vocabulary,
     Dataset
 )
 
-from wiki_nlp.text import Token
+
+from dmm.text import Token
 
 
 @dataclasses.dataclass

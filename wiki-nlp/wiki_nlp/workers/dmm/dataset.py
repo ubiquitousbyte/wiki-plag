@@ -1,6 +1,5 @@
 from typing import (
     Iterable,
-    Iterator,
     OrderedDict,
     List,
     Counter
@@ -10,11 +9,7 @@ from typing import (
 from torch.utils.data import dataset
 from torchtext.vocab import vocab
 
-from wiki_nlp import db
-from wiki_nlp.text import (
-    Token,
-    TextProcessor
-)
+from dmm.text import Token
 
 
 class Vocabulary:
@@ -103,30 +98,6 @@ class Dataset(dataset.Dataset):
         super(Dataset, self).__init__()
         self._dataset = data
 
-    @classmethod
-    def from_documents(cls, documents: Iterator[db.Document],
-                       use_lemmas: bool) -> 'Dataset':
-        """
-        Constructs a dataset from an iterator of database documents
-
-        Parameters
-        ----------
-        documents : Iterator[db.Document]
-            The documents to construct the dataset from 
-
-        use_lemmas : bool
-            Set to True if the dataset should be constructed from the lemmatized
-            versions of each token found in a document
-        """
-
-        processor = TextProcessor()
-        data = []
-        for example in documents:
-            tokens = list(processor.tokenize(example.text, use_lemmas))
-            if len(tokens) > 0:
-                data.append(tokens)
-        return cls(data)
-
     def __getitem__(self, index: int) -> List[Token]:
         return self._dataset[index]
 
@@ -134,12 +105,4 @@ class Dataset(dataset.Dataset):
         return len(self._dataset)
 
     def __iter__(self):
-        self.count = -1
-        return self
-
-    def __next__(self):
-        self.count += 1
-        try:
-            return self[self.count]
-        except IndexError:
-            return
+        return iter(self._dataset)
