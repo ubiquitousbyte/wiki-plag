@@ -20,6 +20,7 @@ const lexEOF = utf8.RuneError
 const (
 	tokenTitle      = "==" // Titles are denoted by multiple equal signs
 	tokenLF         = "\n" // Line feeds
+	tokenTab        = "\t" // Tab token
 	tokenLatexBegin = "{"  // Begin of LateX code inside wikitext
 	tokenLatexEnd   = "}"  // End of LateX code inside wikitext
 )
@@ -137,6 +138,11 @@ func lexLF(l *lexer) lexerState {
 	return lex
 }
 
+func lexTab(l *lexer) lexerState {
+	// We currently handle tabs the same as line feeds
+	return lexLF(l)
+}
+
 // Lexes a LateX segment
 func lexLatex(l *lexer) lexerState {
 	var lefties int
@@ -172,6 +178,13 @@ func lex(l *lexer) lexerState {
 				l.yield(tokenTypeText)
 			}
 			return lexLF
+		}
+
+		if strings.HasPrefix(l.input[l.pos:], tokenTab) {
+			if l.pos > l.start {
+				l.yield(tokenTypeText)
+			}
+			return lexTab
 		}
 
 		if strings.HasPrefix(l.input[l.pos:], tokenTitle) {

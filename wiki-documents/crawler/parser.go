@@ -59,9 +59,8 @@ func parseDocument(page *mw.Page) (doc entity.Document, err error) {
 				p := entity.Paragraph{Title: "Abstract", Text: t.data, Position: 1}
 				ps = append(ps, p)
 			} else {
-				// TODO: Use (((?![\d])\w)+) to further parse out irrelevant
-				// tokens.
 				if c := strings.ReplaceAll(t.data, " ", ""); len(c) != 0 {
+					sb.WriteString(" ")
 					sb.WriteString(t.data)
 				}
 			}
@@ -92,8 +91,20 @@ func parseCategory(page *mw.Page) (c entity.Category, err error) {
 	substr := strings.SplitN(page.Title, ":", 2)
 
 	c.Name = substr[len(substr)-1]
-	c.Description = page.Text
 	c.Source = dataSource
+
+	var sb strings.Builder
+	lexer := newLexer(page.Text)
+	for t := lexer.next(); t.typ != tokenTypeEOF; t = lexer.next() {
+		if t.typ == tokenTypeText {
+			sb.WriteString(" ")
+			sb.WriteString(t.data)
+		} else if t.typ == tokenTypeErr {
+			return c, ErrParse.from(errors.New(t.data))
+		}
+	}
+
+	c.Description = sb.String()
 
 	return
 }
