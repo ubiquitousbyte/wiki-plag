@@ -202,6 +202,24 @@ func TestLexer(t *testing.T) {
 				},
 			},
 		},
+		{
+			name:  "lex 4",
+			input: "Cloud Computing\nDistributed Computing\nData",
+			tokens: []token{
+				{
+					typ:  tokenTypeText,
+					data: "Cloud Computing",
+				},
+				{
+					typ:  tokenTypeText,
+					data: "Distributed Computing",
+				},
+				{
+					typ:  tokenTypeText,
+					data: "Data",
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
