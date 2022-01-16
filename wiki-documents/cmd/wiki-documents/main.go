@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"github.com/ubiquitousbyte/wiki-documents/api"
 	"github.com/ubiquitousbyte/wiki-documents/api/router/category"
 	"github.com/ubiquitousbyte/wiki-documents/api/router/document"
@@ -39,10 +40,15 @@ func main() {
 
 	server := api.New(cfg)
 	server.RegisterMiddleware(
+		cors.Handler(cors.Options{
+			AllowedOrigins:   []string{"https://*", "http://*"},
+			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			AllowedHeaders:   []string{"*"},
+			AllowCredentials: false,
+			MaxAge:           300, // Maximum value not ignored by any of major browsers
+		}),
 		middleware.Logger,
-		middleware.AllowContentType("application/json"),
 		middleware.SetHeader("Content-Type", "application/json"),
-		middleware.ContentCharset("UTF-8"),
 		middleware.StripSlashes,
 	)
 
