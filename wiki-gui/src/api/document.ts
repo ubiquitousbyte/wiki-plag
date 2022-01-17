@@ -8,60 +8,29 @@ let DocumentAPI = {
         return client.get<Document>(`/document/${id}`)
             .then(
                 (response) => response.data,
-                (error) => {
-                    if (error.response) {
-                        return new APIError(error.response.data.detail);
-                    } else if (error.request) {
-                        return new APIError("Fatal error");
-                    } else {
-                        return new APIError(error.message);
-                    }
-                }
+                (error) => APIError.fromResponse(error)
             )
     },
     createDocument: async function (document: Document): Promise<string | APIError> {
         return client.post('/document', document)
             .then(
                 (response) => response.headers["Location"],
-                (error) => {
-                    if (error.response) {
-                        return new APIError(error.response.data.detail);
-                    } else if (error.request) {
-                        return new APIError("Fatal error");
-                    } else {
-                        return new APIError(error.message);
-                    }
-                }
+                (error) => APIError.fromResponse(error)
             )
     },
     updateDocument: async function (document: Document): Promise<void | APIError> {
         return client.put(`/document/${document.id}`, document)
             .then(
                 (response) => { return; },
-                (error) => {
-                    if (error.response) {
-                        return new APIError(error.response.data.detail);
-                    } else if (error.request) {
-                        return new APIError("Fatal error");
-                    } else {
-                        return new APIError(error.message);
-                    }
-                }
+                (error) => APIError.fromResponse(error)
+
             )
     },
     deleteDocument: async function (id: string): Promise<void | APIError> {
         return client.delete(`/document/${id}`)
             .then(
                 (response) => { return; },
-                (error) => {
-                    if (error.response) {
-                        return new APIError(error.response.data.detail);
-                    } else if (error.request) {
-                        return new APIError("Fatal error");
-                    } else {
-                        return new APIError(error.message);
-                    }
-                }
+                (error) => APIError.fromResponse(error)
             )
     }
 }
