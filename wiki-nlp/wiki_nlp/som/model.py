@@ -1,3 +1,4 @@
+import json
 from typing import Dict, Tuple
 import math
 
@@ -11,60 +12,55 @@ from numpy.random import default_rng
 class Decay(nn.Module):
     """
     A time varying exponential function that artificially decreases an
-    initial sigma value as time increases. 
-
-    This is known as an exponential decay function. 
-
-    This decay function is necessary for stochastic approximation, i.e 
-    for artificially decreasing the learning rate of a model that does not 
+    initial sigma value as time increases.
+    This is known as an exponential decay function.
+    This decay function is necessary for stochastic approximation, i.e
+    for artificially decreasing the learning rate of a model that does not
     use gradient descent.
-
     Methods
     -------
     forward(time_step: int) -> float
-        Exponentially decreases the initial sigma value as a function 
+        Exponentially decreases the initial sigma value as a function
         of the current time step. The decayed value is returned to the caller
     """
 
-    def __init__(self, sigma: float, time_constant: float):
+    def __init__(self, sigma: float, max_iter: int):
         """
         Parameters
         ----------
-        sigma : float 
+        sigma : float
             The initial value of the parameter
-
-        time_constant: float 
+        time_constant: float
             Heuristic value that determines the threshold of the decay.
-
         Example
         -------
-        With sigma = 0.1 and time_constant = 1000, the returned decay will 
-        remain in the range [0.1, 0.01].  
+        With sigma = 0.1 and time_constant = 1000, the returned decay will
+        remain in the range [0.1, 0.01].
         """
 
         super(Decay, self).__init__()
         self._sigma = sigma
-        self._time_const = time_constant
+       # self._time_const = time_constant
+        self._max_iter = max_iter
 
     def forward(self, time_step: int) -> float:
         """
         Parameters
         ----------
-        time_step : int 
+        time_step : int
             The current time value
         """
-
-        return self._sigma*math.exp(-time_step/self._time_const)
+        return self._sigma / (1 + time_step/(self._max_iter/2))
 
 
 class Neighbourhood(nn.Module):
     """
-    The neighbourhood function of the SOM. 
+    The neighbourhood function of the SOM.
     """
 
-    def __init__(self, sigma: float, time_constant: float):
+    def __init__(self, sigma: float, max_iter: int):
         super(Neighbourhood, self).__init__()
-        self._decay = Decay(sigma, time_constant)
+        self._decay = Decay(sigma, max_iter)
 
     def forward(self, x, y, winner, t):
         """
@@ -90,12 +86,13 @@ class Neighbourhood(nn.Module):
         # the size of the neighbourhood.
         # At each time step, the spread decreases.
         decay = self._decay.forward(t)
+        norm_const = 2*decay*decay
 
         # Map the distances onto the gaussian density.
         # Neurons closest to the winner are mapped around the peak
         # of the gaussian bell curve and thus have high probabilities.
-        hx = torch.exp(torch.neg(torch.div(dx, 2*decay*decay)))
-        hy = torch.exp(torch.neg(torch.div(dy, 2*decay*decay)))
+        hx = torch.exp(torch.neg(torch.div(dx, norm_const)))
+        hy = torch.exp(torch.neg(torch.div(dy, norm_const)))
 
         # Unflatten the grid to reform the 2-D output space
         return (hx*hy).T
@@ -103,14 +100,11 @@ class Neighbourhood(nn.Module):
 
 class QuantizationLoss(nn.Module):
     """
-    Loss metric for a SOM. 
-
-    This loss sums the distances between the neurons of a SOM and a set of 
-    input data points. 
-
-    A large value indicates that the mapping between the input space 
-    and the output space is disproportionate 
-
+    Loss metric for a SOM.
+    This loss sums the distances between the neurons of a SOM and a set of
+    input data points.
+    A large value indicates that the mapping between the input space
+    and the output space is disproportionate
     """
 
     def __init__(self):
@@ -134,19 +128,19 @@ class QuantizationLoss(nn.Module):
 class SOM(nn.Module):
 
     def __init__(self, grid: Tuple[int, int, int],
-                 sigma: float = 0.8, learning_rate: float = 0.1):
+                 sigma: float = 0.8, learning_rate: float = 0.1, epochs: int = 100):
         """
         Parameters
         ----------
         grid : Tuple[int, int, int]
             The x, y and z sizes of the grid.
             x represents the height of the lattice.
-            y represents the width of the lattice 
-            z represents the size of the input features 
-        sigma : float 
-            The initial width of the neighbourhood for a winning neuron 
+            y represents the width of the lattice
+            z represents the size of the input features
+        sigma : float
+            The initial width of the neighbourhood for a winning neuron
         learning_rate : float
-            The initial learning rate of the map 
+            The initial learning rate of the map
         """
 
         super(SOM, self).__init__()
@@ -159,25 +153,25 @@ class SOM(nn.Module):
         self._gy = nn.Parameter(gy, requires_grad=False)
 
         self._W = nn.Parameter(torch.randn(x, y, z), requires_grad=False)
-        self._W /= torch.linalg.norm(self._W, ord=2, dim=-1, keepdim=True)
+        self._W /= torch.linalg.norm(self._W, dim=1, keepdim=True)
 
         # Assume an initial learning rate of 0.1
         # If we use an initial time constant of 1000,
         # then the learning rate will begin at 0.1 and decrease
         # gradually with each time step
-        # A time constant equal to 1000 ensres that the learning rate
+        # A time constant equal to 1000 ensures that the learning rate
         # will always remain above 0.01.
-        self._lr_decay = Decay(learning_rate, 1000)
+        self._lr_decay = Decay(learning_rate, epochs)
 
-        self._neigh = Neighbourhood(sigma, 1000/math.log(sigma))
+        self._neigh = Neighbourhood(sigma, epochs)
 
         self._rng = default_rng()
+        self.epochs = epochs
 
     def winner(self, x):
         """
-        Given an input sample x, this function returns the coordinates 
-        of the neuron that is closest to the sample 
-
+        Given an input sample x, this function returns the coordinates
+        of the neuron that is closest to the sample
         Parameters
         ----------
         x : torch.FloatTensor
@@ -190,48 +184,41 @@ class SOM(nn.Module):
 
     def forward(self, x: torch.FloatTensor, t: int):
         """
-        Forward pass of the SOM. 
-
+        Forward pass of the SOM.
         Step 1 (Competitive process):
         Computes the coordinates of the neuron that is closest to x.
-
         Step 2 (Cooperative process):
-        The winner neuron and its neighouring neurons are assigned 
-        high probabilities over the discrete output space. 
-
+        The winner neuron and its neighouring neurons are assigned
+        high probabilities over the discrete output space.
         Parameters
         ----------
         x : torch.FloatTensor
             The input sample to apply the forward pass on
-        t : float 
-            The current time step 
+        t : float
+            The current time step
         """
 
         return self._neigh.forward(self._gx, self._gy, self.winner(x), t)
 
     def backward(self, x, h, t):
         """
-        Backward pass of the SOM. 
-
+        Backward pass of the SOM.
         Step 1 (Adaptive process):
         The winner neuron and its neighours are pushed closer to the input.
-        The probability distribution computed in the forward pass 
+        The probability distribution computed in the forward pass
         is the factor which regulates the updates.
-
         Neurons that are not in the neighbourhood have a probability of 0,
         and therefore do not get updated.
-
         Conversely, neurons in the neighbourhood have probabilities > 0.
         Neurons closer to the winner get higher probabilities.
-        In other words, neurons closest to the winner get a stronger push 
-        towards the input. 
-
+        In other words, neurons closest to the winner get a stronger push
+        towards the input.
         Parameters
         ----------
         x : torch.FloatTensor
             The current input vector
         h : torch.FloatTensor
-            The probability distribution of all neighbour neurons 
+            The probability distribution of all neighbour neurons
         t : int
             The current time step
         """
@@ -247,10 +234,9 @@ class SOM(nn.Module):
         loss = QuantizationLoss()
         return loss.forward(x, self._W)
 
-    def fit(self, x: torch.FloatTensor, epochs: int = 500) -> Dict[int, Tuple[int, int]]:
+    def fit(self, x: torch.FloatTensor, model_path: str = None, map_path: str = None) -> Dict[int, Tuple[int, int]]:
         """
         Trains a SOM on the data matrix
-
         Parameters
         ----------
         x : torch.FloatTensor
@@ -262,34 +248,38 @@ class SOM(nn.Module):
         # tensor of indices [0...99]
         indices = torch.arange(x.size(dim=0))
 
-        # Repeat the indices by the number of epochs
-        # Following the example above, if epochs is 10, this
-        # yields a tensor holding 10 repetitions of [0..99]
-        iterations = indices.repeat(epochs)
-
-        # Shuffle the indices
-        iterations = iterations[torch.randperm(iterations.size(dim=0))]
-
+        time_step = 1
+        loss = float("inf")
         som = {}
 
-        # Initiate training procedure
-        for time_step, iteration in enumerate(iterations):
-            # Forward pass
-            h = self.forward(x[iteration], time_step)
-            # Backward pass
-            self.backward(x[iteration], h, time_step)
-            som[iteration.item()] = self.winner(x[iteration])
+        for epoch in range(0, self.epochs):
+            iterations = indices[torch.randperm(indices.size(dim=0))]
+            for iteration in iterations:
+                h = self.forward(x[iteration], time_step)
+                self.backward(x[iteration], h, time_step)
+                som[iteration.item()] = str(self.winner(x[iteration]))
+                time_step += 1
+            local_loss = self.quantization_error(x).item()
+            print("\Quantization error: ", local_loss)
 
-        # Print quantization error
-        print("\nQuantization error: ", self.quantization_error(x))
+            is_best_loss = local_loss < loss
+            loss = min(local_loss, loss)
+            if is_best_loss and model_path is not None:
+                torch.save(self.state_dict(), model_path)
 
-        return som
+        if map_path is not None:
+            dinv = {}
+            for k, v in som.items():
+                if v in dinv:
+                    dinv[v].append(k)
+                else:
+                    dinv[v] = [k]
+            with open(f"{map_path}.json", 'w') as map_file:
+                json.dump(dinv, map_file)
 
-
-if __name__ == '__main__':
-    som = SOM((5, 5, 10))
-
-    x = torch.randn(100, 10)
-    x /= torch.linalg.norm(x, ord=2, dim=-1, keepdim=True)
-    m = som.fit(x)
-    print(m)
+    @classmethod
+    def from_file(cls, som_path: str) -> 'SOM':
+        state_dict = torch.load(som_path)
+        model = cls(grid=(32, 32, 100), epochs=1, learning_rate=0.25)
+        model._W.data = state_dict['_W']
+        return model
