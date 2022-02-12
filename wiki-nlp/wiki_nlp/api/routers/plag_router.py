@@ -17,6 +17,6 @@ class Text(BaseModel):
     text: str
 
 
-@router.get('')
+@router.post('')
 def get_plags(text: Text, dmm: IDMMService = Depends(di.get_dmm_service)):
     return dmm.most_similar(text.text)
