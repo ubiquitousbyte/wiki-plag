@@ -11,14 +11,12 @@ export default function PlagForm(props: { onSubmit: (text: string) => Promise<vo
 
     return (
         <form onSubmit={onSubmit}>
-            <label htmlFor="plagInput" className="form-lable inline-block mb-2 text-gray-700">
-                Plagiarism Detector
-            </label>
             <textarea
                 className="
                 form-control
                 block
                 w-full
+                h-96
                 px-3
                 py-1.5
                 text-base

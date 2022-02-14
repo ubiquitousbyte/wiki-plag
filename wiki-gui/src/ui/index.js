@@ -1,4 +1,5 @@
 import PlagForm from "./plag-form";
-import Spinner from "./spinner";
+import PlagConsole from "./plag-console";
+import Header from "./header";
 
-export { PlagForm, Spinner };
+export { PlagForm, PlagConsole, Header };
