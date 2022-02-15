@@ -35,9 +35,6 @@ function App() {
         </div>
       </div>
       <div>
-        asd
-      </div>
-      <div>
         <Footer />
       </div>
     </div>
