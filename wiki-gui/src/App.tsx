@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { PlagAPI } from './api';
 import APIError from './api/error';
 import Paragraph from './api/paragraph';
-import { PlagForm, PlagConsole, Header, Footer } from './ui';
+import { PlagForm, PlagConsole, Header, Footer, SimilarityChart } from './ui';
 
 function App() {
   const [plags, setPlags] = useState<Paragraph[]>([]);
@@ -17,7 +17,6 @@ function App() {
       .then((paragraphs) => setPlags(paragraphs))
       .catch((err: APIError) => setError(err.detail));
   }
-
 
   return (
     <div className="grid">
@@ -34,11 +33,11 @@ function App() {
           <PlagConsole paragraphs={plags} error={error} loading={submitted} />
         </div>
       </div>
-      <div>
-        <Footer />
+      <div className="m-auto">
+        <SimilarityChart data={plags.map(p => { return { title: p.id, similarity: 0.5 } })} />
       </div>
+      <Footer />
     </div>
-
   );
 }
 
