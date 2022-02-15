@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { PlagAPI } from './api';
 import APIError from './api/error';
 import Paragraph from './api/paragraph';
-import { PlagForm, PlagConsole, Header } from './ui';
+import { PlagForm, PlagConsole, Header, Footer } from './ui';
 
 function App() {
   const [plags, setPlags] = useState<Paragraph[]>([]);
@@ -35,7 +35,10 @@ function App() {
         </div>
       </div>
       <div>
-        as
+        asd
+      </div>
+      <div>
+        <Footer />
       </div>
     </div>
 
