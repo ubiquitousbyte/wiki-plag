@@ -1,22 +1,19 @@
+from typing import List
+
 from fastapi import (
     APIRouter,
     Depends
 )
 
 
-from pydantic import BaseModel
-
-from wiki_nlp.api.services.dmm_service import IDMMService
+from wiki_nlp.api.services.plag_service import IPlagService
+from wiki_nlp.api.services.schema import Text
 
 from wiki_nlp.api.routers import dependencies as di
 
 router = APIRouter(prefix='/plag')
 
 
-class Text(BaseModel):
-    text: str
-
-
 @router.post('')
-def get_plags(text: Text, dmm: IDMMService = Depends(di.get_dmm_service)):
-    return dmm.most_similar(text.text)
+def get_plags(text: Text, plag_service: IPlagService = Depends(di.get_plag_service)):
+    return plag_service.find_candidates(text.text)

@@ -18,6 +18,7 @@ class MongoParagraphStore:
 
     def read_by_dmm_indices(self, indices: Iterable[int]) -> Iterable[Paragraph]:
         coll = self.client.wikiplag.nlp
-        for p in coll.find({"dmmIndex": {"$in": indices}}):
-            yield Paragraph(id=str(p['_id']), document=str(p['document']), text=p['text'],
-                            position=p['position'], dmm_index=p['dmmIndex'])
+        for p in coll.find({"index": {"$in": indices}}):
+            p['id'] = p['_id']
+            del p['_id']
+            yield Paragraph(**p)
