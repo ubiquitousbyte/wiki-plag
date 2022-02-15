@@ -11,66 +11,8 @@ import pymongo
 import argparse
 
 if __name__ == '__main__':
-    smp.set_start_method("spawn")
-
-    # parser = argparse.ArgumentParser(
-    #    description="Distributed Memory Model training utility")
-
-    # parser.add_argument('--host', type=str,
-    #                    help='Database IP (default: %(default)s)', default="localhost")
-    # parser.add_argument('--port', type=int,
-    #                    help="Database port (default: %(default)s)", default=27017)
-    #parser.add_argument('--user', type=str, help="Database user")
-    # parser.add_argument("--password", type=str,
-    #                    help="Database password")
-    # parser.add_argument("--collection", type=str,
-    #                    help="Collection to store the training data into. (default: %(default)s)",
-    #                    default="nlp")
-
-    #args = parser.parse_args()
-
     uri = f"mongodb://wikiplag:wikiplag2021@localhost:27017/wikiplag"
     client = pymongo.MongoClient(uri)
-    """
-    pipeline = [
-        # Stage 1
-        # Flatten all paragraph fields
-        {
-            "$unwind": {"path": "$paragraphs"}
-        },
-
-        # Stage 2
-        # Remove all paragraphs that do not have any text in them
-        {
-            "$match": {
-                "paragraphs.text": {"$ne": ""},
-                "paragraphs.title": {
-                    "$nin": ['Weblinks', 'Literatur', 'Siehe auch']
-                }
-            }
-        },
-        # Stage 3
-        # Project the required fields into a new collection
-        {
-            "$project": {
-                "_id": 0,
-                "document": "$_id",
-                "text": "$paragraphs.text",
-                "position": "$paragraphs.position"
-
-            }
-        },
-        # Stage 4
-        # Load results into the collection
-        {
-            "$out": args.collection
-        }
-    ]
-
-    # Get the documents collection and apply the pipeline, saving the results
-    # inside the user-defined collection
-    client['wikiplag']['documents'].aggregate(pipeline)
-    """
 
     # Get the collection that holds the input data
     coll = client['wikiplag']["nlp"]
@@ -83,9 +25,6 @@ if __name__ == '__main__':
     paragraphs = coll.aggregate([
         {
             "$sort": {"dmmIndex": 1}
-        },
-        {
-            "$limit": 180000
         },
         {
             "$project": {
