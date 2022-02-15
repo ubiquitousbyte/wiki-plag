@@ -33,9 +33,11 @@ function App() {
           <PlagConsole paragraphs={plags} error={error} loading={submitted} />
         </div>
       </div>
-      <div className="m-auto">
-        <SimilarityChart data={plags.map(p => { return { title: p.id, similarity: 0.5 } })} />
-      </div>
+      {plags.length > 0 && (
+        <div className="m-auto">
+          <SimilarityChart data={plags.map(p => { return { title: p.id, similarity: 0.5 } })} />
+        </div>
+      )}
       <Footer />
     </div>
   );
