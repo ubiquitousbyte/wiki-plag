@@ -1,3 +1,3 @@
-import PlagAPI from "./plag-api";
+import { PlagAPI, PlagCandidate } from "./plag-api";
 
-export { PlagAPI };
+export { PlagAPI, PlagCandidate };

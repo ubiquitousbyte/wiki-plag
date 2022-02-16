@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
-import { PlagAPI } from './api';
+import { PlagAPI, PlagCandidate } from './api';
 import APIError from './api/error';
-import Paragraph from './api/paragraph';
 import { PlagForm, PlagConsole, Header, Footer, SimilarityChart } from './ui';
 
 function App() {
-  const [plags, setPlags] = useState<Paragraph[]>([]);
+  const [plags, setPlags] = useState<PlagCandidate[]>([]);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
@@ -14,7 +13,7 @@ function App() {
     setPlags([]);
     setError("");
     await PlagAPI.detect(text)
-      .then((paragraphs) => setPlags(paragraphs))
+      .then((candidates) => setPlags(candidates))
       .catch((err: APIError) => setError(err.detail));
   }
 
@@ -30,12 +29,12 @@ function App() {
           </div>
         </div>
         <div className="col-start-3 col-end-9 p-4">
-          <PlagConsole paragraphs={plags} error={error} loading={submitted} />
+          <PlagConsole paragraphs={plags.map(plag => plag.paragraph)} error={error} loading={submitted} />
         </div>
       </div>
       {plags.length > 0 && (
         <div className="m-auto">
-          <SimilarityChart data={plags.map(p => { return { title: p.id, similarity: 0.5 } })} />
+          <SimilarityChart data={plags.map(p => { return { title: p.paragraph.document.title, similarity: p.similarity } })} />
         </div>
       )}
       <Footer />

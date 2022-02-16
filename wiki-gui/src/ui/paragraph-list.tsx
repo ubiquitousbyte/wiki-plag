@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import ParagraphCard from "./paragraph-card";
-import Paragraph from "../api/paragraph";
+import { Paragraph } from "../api/entity";
 
 export default function ParagraphList(props: { paragraphs: Paragraph[] }) {
     const [current, setCurrent] = useState(0);
@@ -37,7 +37,7 @@ export default function ParagraphList(props: { paragraphs: Paragraph[] }) {
                     d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
             <div className="col-start-2 col-end-6 h-96 w-full overflow-auto flex align-center">
-                <ParagraphCard p={props.paragraphs[current]} />
+                <ParagraphCard paragraph={props.paragraphs[current]} />
             </div>
             <svg xmlns="http://www.w3.org/2000/svg"
                 onClick={onRightClick}

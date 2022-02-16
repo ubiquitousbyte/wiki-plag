@@ -1,5 +1,5 @@
 import React from "react";
-import Paragraph from "../api/paragraph";
+import { Paragraph } from "../api/entity";
 import ParagraphList from "./paragraph-list";
 import Spinner from "./spinner";
 
