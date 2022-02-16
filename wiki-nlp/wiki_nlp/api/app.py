@@ -1,13 +1,20 @@
 from fastapi import (
     FastAPI
 )
-#import uvicorn
-#from torch.multiprocessing import set_start_method
+from fastapi.middleware.cors import CORSMiddleware
 
 from wiki_nlp.api.routers import plag_router
 
 
 app = FastAPI(title='Plagiarism Detector', version='0.1.0')
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
 app.include_router(plag_router.router, prefix='/api/v1')
 
