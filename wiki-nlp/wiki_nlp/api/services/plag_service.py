@@ -2,8 +2,11 @@ from typing import Iterable
 import pickle
 import numpy as np
 
+from torch.nn.functional import cosine_similarity
+import torch
+
 from wiki_nlp.api.services.schema import PlagCandidate
-from wiki_nlp.api.db import ParagraphStore
+from wiki_nlp.api.db import MongoParagraphStore, ParagraphStore
 from wiki_nlp.dmm.dataset import lemmatize
 
 from gensim.models.doc2vec import Doc2Vec as DMM
@@ -25,23 +28,21 @@ class PlagService:
             self.som: MiniSom = pickle.load(sfile)
 
     def find_candidates(self, document: str, n: int = 4) -> Iterable[PlagCandidate]:
-        # Lemmatise document
-        document = lemmatize([document], n_workers=1)
-
+        # Lemmatize document
+        document = lemmatize([document], n_workers=0)
         # Infer a vector
         vector = self.dmpv.infer_vector(next(document))
-
-        # Find documents in the dataset most similar to the inferred vector
-        sims = self.dmpv.dv.most_similar([vector], topn=n)
-
-        # Extract those documents from the database
-        ps = self.store.read_by_dmm_indices(list(map(lambda x: x[0], sims)))
-
-        # Sort data by index
-        sims = sorted(sims, key=lambda pair: pair[0])
-        ps = sorted(ps, key=lambda p: p.index)
-
-        # Group documents and similarities
-        for (_, similarity), p in zip(sims, ps):
-            p.id = str(p.id)
-            yield PlagCandidate(paragraph=p, similarity=similarity)
+        # Map the vector to a neuron in the self-organizing map
+        winner = self.som.winner(vector)
+        winner = int(winner[0]), int(winner[1])
+        # Query all documents that were mapped to the same neuron during training
+        candidates = list(self.store.read_by_som_coordinates(winner))
+        # Extract their vectors
+        vectors = self.dmpv.dv[list(map(lambda x: x.index, candidates))]
+        # Compute cosine similarity
+        sims = cosine_similarity(torch.from_numpy(
+            vector), torch.from_numpy(vectors))
+        # Get top most similar documents in the same cluster
+        top = torch.topk(sims, k=n)
+        for value, index in zip(top.values, top.indices):
+            yield PlagCandidate(paragraph=candidates[index], similarity=value)

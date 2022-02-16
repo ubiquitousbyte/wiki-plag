@@ -8,7 +8,6 @@ from wiki_nlp.api.entity import Paragraph
 class PlagCandidate(BaseModel):
     paragraph: Paragraph
     similarity: float
-    coordinate: Tuple[int, int]
 
 
 class Text(BaseModel):

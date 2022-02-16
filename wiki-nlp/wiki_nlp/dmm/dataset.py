@@ -23,9 +23,15 @@ SPACY_DE_PIPE = spacy.load("de_core_news_sm", exclude=[
 
 
 def lemmatize(texts: Iterable[str], n_workers: int) -> Iterator[Iterable[str]]:
-    for doc in SPACY_DE_PIPE.pipe(texts, n_process=n_workers):
-        yield [tok.lemma_.lower() for tok in doc
-               if len(tok.lemma_.replace(" ", "")) != 0 and not tok.is_punct]
+    if n_workers == 0:
+        for doc in texts:
+            doc = SPACY_DE_PIPE(doc)
+            yield [tok.lemma_.lower() for tok in doc
+                   if len(tok.lemma_.replace(" ", "")) != 0 and not tok.is_punct]
+    else:
+        for doc in SPACY_DE_PIPE.pipe(texts, n_process=n_workers):
+            yield [tok.lemma_.lower() for tok in doc
+                   if len(tok.lemma_.replace(" ", "")) != 0 and not tok.is_punct]
 
 
 class Vocab:
