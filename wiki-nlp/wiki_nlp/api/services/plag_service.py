@@ -1,12 +1,11 @@
 from typing import Iterable
 import pickle
-import numpy as np
 
 from torch.nn.functional import cosine_similarity
 import torch
 
 from wiki_nlp.api.services.schema import PlagCandidate
-from wiki_nlp.api.db import MongoParagraphStore, ParagraphStore
+from wiki_nlp.api.db import ParagraphStore
 from wiki_nlp.dmm.dataset import lemmatize
 
 from gensim.models.doc2vec import Doc2Vec as DMM
