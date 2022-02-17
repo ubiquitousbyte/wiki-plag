@@ -37,7 +37,9 @@ function App() {
           <SimilarityChart data={plags.map(p => { return { title: p.paragraph.document.title, similarity: p.similarity } })} />
         </div>
       )}
-      <Footer />
+      <div className="fixed bottom-0 w-full">
+        <Footer />
+      </div>
     </div>
   );
 }
