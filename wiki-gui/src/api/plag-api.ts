@@ -27,7 +27,10 @@ const PlagAPI = {
     detect: async function (text: string): Promise<PlagCandidate[]> {
         return client.post<PlagCandidate[]>("/plag", { text: text })
             .then((response) => response.data)
-            .catch((error) => Promise.reject(APIError.fromResponse(error)));
+            .catch((error) => {
+                console.log(error);
+                return Promise.reject(APIError.fromResponse(error));
+            });
     }
 }
 
