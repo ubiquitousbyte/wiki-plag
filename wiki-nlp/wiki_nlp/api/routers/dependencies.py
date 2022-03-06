@@ -13,7 +13,7 @@ def get_db_pwd() -> str:
 
 def get_paragraph_store() -> ParagraphStore:
     password = get_db_pwd()
-    return MongoParagraphStore(f"mongodb://wikiplag:{password}@localhost:27017/wikiplag")
+    return MongoParagraphStore(f"mongodb://wikiplag:{password}@database:27017/wikiplag")
 
 
 def get_plag_service() -> plag_service.IPlagService:
