@@ -44,6 +44,16 @@ services:
     depends_on:
      - database
 
+  gui:
+    build:
+      context: ./wiki-gui
+      dockerfile: Dockerfile
+    restart: on-failure
+    ports:
+      - 80:80
+    depends_on:
+      - nlp
+      
 secrets:
   db-root-password:
     file: ./wiki-db/db-root-password.txt
