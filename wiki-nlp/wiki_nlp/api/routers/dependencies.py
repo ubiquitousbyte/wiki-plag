@@ -6,8 +6,14 @@ from wiki_nlp.api.db import (
 )
 
 
+def get_db_pwd() -> str:
+    with open("/run/secrets/db-password", "r") as fobj:
+        return fobj.read()
+
+
 def get_paragraph_store() -> ParagraphStore:
-    return MongoParagraphStore("mongodb://wikiplag:wikiplag2021@localhost:27017/wikiplag")
+    password = get_db_pwd()
+    return MongoParagraphStore(f"mongodb://wikiplag:{password}@localhost:27017/wikiplag")
 
 
 def get_plag_service() -> plag_service.IPlagService:

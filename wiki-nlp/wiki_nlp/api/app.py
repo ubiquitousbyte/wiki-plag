@@ -17,11 +17,3 @@ app.add_middleware(
 )
 
 app.include_router(plag_router.router, prefix='/api/v1')
-
-"""if __name__ == '__main__':
-    try:
-        set_start_method("spawn")
-    except:
-        pass
-
-    uvicorn.run(app, host='0.0.0.0', port=8082, log_level='debug')"""

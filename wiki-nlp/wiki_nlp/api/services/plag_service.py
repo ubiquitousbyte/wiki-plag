@@ -22,8 +22,8 @@ class PlagService:
 
     def __init__(self, store: ParagraphStore):
         self.store = store
-        self.dmpv: DMM = DMM.load("dmm_2.pth")
-        with open("som_2.pth", 'rb') as sfile:
+        self.dmpv: DMM = DMM.load("/usr/data/dmm_2.pth")
+        with open("/usr/data/som_2.pth", 'rb') as sfile:
             self.som: MiniSom = pickle.load(sfile)
 
     def find_candidates(self, document: str, n: int = 4) -> Iterable[PlagCandidate]:
