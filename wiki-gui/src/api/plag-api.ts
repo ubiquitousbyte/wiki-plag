@@ -3,7 +3,7 @@ import APIError from "./error";
 import { Paragraph } from "./entity";
 
 const client = axios.create({
-    baseURL: "http://nlp/api/v1",
+    baseURL: "http://wikiplag.f4.htw-berlin.de:8081/api/v1",
     timeout: 1000 * 30,
     headers: {
         "Content-Type": "application/json",
