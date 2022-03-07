@@ -28,20 +28,28 @@ class PlagService:
 
     def find_candidates(self, document: str, n: int = 4) -> Iterable[PlagCandidate]:
         # Lemmatize document
-        document = lemmatize([document], n_workers=0)
-        # Infer a vector
-        vector = self.dmpv.infer_vector(next(document))
-        # Map the vector to a neuron in the self-organizing map
-        winner = self.som.winner(vector)
-        winner = int(winner[0]), int(winner[1])
-        # Query all documents that were mapped to the same neuron during training
-        candidates = list(self.store.read_by_som_coordinates(winner))
-        # Extract their vectors
-        vectors = self.dmpv.dv[list(map(lambda x: x.index, candidates))]
-        # Compute cosine similarity
-        sims = cosine_similarity(torch.from_numpy(
-            vector), torch.from_numpy(vectors))
-        # Get top most similar documents in the same cluster
-        top = torch.topk(sims, k=n)
-        for value, index in zip(top.values, top.indices):
-            yield PlagCandidate(paragraph=candidates[index], similarity=value)
+        try:
+            print("lemmatising")
+            document = lemmatize([document], n_workers=0)
+            # Infer a vector
+            print("infering")
+            vector = self.dmpv.infer_vector(next(document))
+            # Map the vector to a neuron in the self-organizing map
+            print("winner")
+            winner = self.som.winner(vector)
+            winner = int(winner[0]), int(winner[1])
+            # Query all documents that were mapped to the same neuron during training
+            print("candidates")
+            candidates = list(self.store.read_by_som_coordinates(winner))
+            # Extract their vectors
+            vectors = self.dmpv.dv[list(map(lambda x: x.index, candidates))]
+            print("cosine similarity")
+            # Compute cosine similarity
+            sims = cosine_similarity(torch.from_numpy(
+                vector), torch.from_numpy(vectors))
+            # Get top most similar documents in the same cluster
+            top = torch.topk(sims, k=n)
+            for value, index in zip(top.values, top.indices):
+                yield PlagCandidate(paragraph=candidates[index], similarity=value)
+        except Exception as e:
+            print(e)
